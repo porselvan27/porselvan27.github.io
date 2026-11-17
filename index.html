@@ -653,15 +653,27 @@ function ready(){
   startReport();
 }
 if (ONLINE){
-  server('getAll').then(d => {
+  /* open at once with the reports from last time, then refresh from the Google Sheet in the background */
+  const KEY_CACHE = 'dsr.cache';
+  const apply = d => {
     reports = d.reports || [];
     if (d.settings) { settings = Object.assign(settings, d.settings); keep(KEY_S, settings); }
     $('pin-card').hidden = !d.pinRequired;
-    $('sync').textContent = 'Saved to Google Sheet';
     $('store-hint').textContent = 'Reports and settings are shared with the whole team and saved in the Google Sheet.';
-    ready();
+  };
+  const cached = load(KEY_CACHE, null);
+  let autoCur = null;
+  if (cached) { apply(cached); $('sync').textContent = 'Updating…'; ready(); autoCur = cur; }
+  server('getAll').then(d => {
+    keep(KEY_CACHE, d); apply(d);
+    $('sync').textContent = 'Saved to Google Sheet';
+    if (!autoCur) ready();
+    else { if (!dirty && cur === autoCur) startReport(cur.site); renderList(); }
     if (d.pinRequired && !pin) toast('Enter the team PIN in Settings before saving');
-  }).catch(e => { $('loading').textContent = 'Could not load reports. ' + errText(e); });
+  }).catch(e => {
+    if (autoCur) { $('sync').textContent = 'Offline – showing last data'; toast('Could not reach the Google Sheet. ' + errText(e)); }
+    else $('loading').textContent = 'Could not load reports. ' + errText(e);
+  });
 } else {
   $('sync').textContent = 'This device only';
   $('store-hint').textContent = 'Opened as a file: reports are saved in this browser only.';
