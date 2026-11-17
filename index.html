@@ -607,11 +607,30 @@ $('b-print').onclick = async () => {
     const res = await server('makePdf', copy(cur), LOGO, pin);
     $('pdf-name').textContent = res.name + (res.photos ? ' · ' + res.photos + ' photo' + (res.photos > 1 ? 's' : '') : '');
     $('pdf-open').href = res.url;
-    $('pdf-wa').href = 'https:/' + '/wa.me/?text=' + encodeURIComponent('Daily Site Report ' + cur.site + ' ' + fmtDate(cur.date) + '\n' + res.url);
+    const caption = 'Daily Site Report ' + cur.site + ' ' + fmtDate(cur.date);
+    $('pdf-wa').href = 'https:/' + '/wa.me/?text=' + encodeURIComponent(caption + '\n' + res.url);
+    pdfFile = null;
+    try {
+      if (res.b64 && window.File && navigator.canShare) {
+        const bin = atob(res.b64), bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const f = new File([bytes], res.name, { type: 'application/pdf' });
+        if (navigator.canShare({ files: [f] })) pdfFile = { file: f, caption };
+      }
+    } catch (e) { pdfFile = null; }
+    $('pdf-wa').textContent = pdfFile ? 'Send PDF on WhatsApp' : 'Send on WhatsApp';
     $('pdf-modal').hidden = false;
   } catch (err) { toast('PDF not made: ' + errText(err)); }
   finally { btn.disabled = false; btn.textContent = 'PDF'; }
 };
+/* share the real PDF file (phone share sheet: pick WhatsApp, then the group); falls back to the link */
+let pdfFile = null;
+$('pdf-wa').addEventListener('click', e => {
+  if (!pdfFile) return;
+  e.preventDefault();
+  navigator.share({ files: [pdfFile.file], title: pdfFile.caption, text: pdfFile.caption })
+    .catch(err => { if (err && err.name !== 'AbortError') location.href = $('pdf-wa').href; });
+});
 $('pdf-print').onclick = () => { $('pdf-modal').hidden = true; printHere(); };
 $('pdf-close').onclick = () => { $('pdf-modal').hidden = true; };
 
