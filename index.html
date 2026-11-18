@@ -69,7 +69,7 @@ select.st-old{font-weight:400;color:var(--muted)}
 @keyframes scanned{0%,40%{box-shadow:0 0 0 3px #0f8a7a88;background:color-mix(in srgb,#38c7a5 18%,var(--card))}}
 .row:has(select.st-Absent) input:not([data-f$=":name"]):not([data-f$=":trade"]){opacity:.45}
 .r-mat{grid-template-columns:2fr 1fr 1.5fr}
-.r-stk{grid-template-columns:1.6fr 1fr 1fr 1fr 1fr}
+.r-stk{grid-template-columns:1.6fr .9fr 1fr 1fr 1fr 1fr}
 .r-work{grid-template-columns:1fr}
 .closing{background:var(--calc);font-weight:600}
 .add{background:none;border:1px dashed var(--blue);color:var(--blue);border-radius:7px;padding:7px;width:100%;margin-top:8px;cursor:pointer;font:inherit}
@@ -101,7 +101,8 @@ select.st-old{font-weight:400;color:var(--muted)}
 .ph .st{position:absolute;left:6px;top:6px;background:#000a;color:#fff;font-size:12px;padding:2px 8px;border-radius:10px}
 label.add{display:block;text-align:center}
 @media (max-width:640px){
-  .r-sub,.r-co,.r-mat,.r-stk{grid-template-columns:1fr 1fr}
+  .r-sub,.r-co,.r-mat{grid-template-columns:1fr 1fr}
+  .r-stk{grid-template-columns:1fr 1fr 1fr}
   .row>div:nth-of-type(1){grid-column:1/-1}
   .bar .wrap{gap:5px;padding-left:8px;padding-right:8px}
   .bar .btn{padding:10px 4px;font-size:13px;flex:1}
@@ -382,7 +383,7 @@ main[data-dir=l] section:not([hidden]){animation:tabL .45s var(--ease) both}
     <div class="photos docs" id="docs-sent"></div></div></div>
 
   <div class="card"><h2>STOCK POSITION</h2><div class="body">
-    <div class="rows" id="stk"></div><button class="add" data-add="stk">+ Add material</button>
+    <div class="rows" id="stk"></div><button class="add" data-add="stk">+ Add material</button><datalist id="units"></datalist>
     <p class="hint">Closing stock = Opening + Received − Issued. It becomes the next day's opening stock when you tap "New day".</p></div></div>
 
   <div class="card"><h2>WORK SUMMARY DETAILS</h2><div class="body">
@@ -414,7 +415,7 @@ main[data-dir=l] section:not([hidden]){animation:tabL .45s var(--ease) both}
     <div><label for="s-in">Reporting time</label><input id="s-in"></div>
     <div><label for="s-out">Leaving time</label><input id="s-out"></div>
   </div><div class="body" style="padding-top:0">
-    <label for="s-mats">Stock materials (one per line)</label>
+    <label for="s-mats">Stock materials – one per line, unit after a bar, e.g. CEMENT | BAGS</label>
     <textarea id="s-mats" rows="10"></textarea>
     <p class="hint" id="store-hint"></p>
   </div></div>
@@ -454,6 +455,11 @@ window.onerror = (msg, src, line) => { const el = document.getElementById('loadi
 const LOGO = document.querySelector('header img').src;
 const KEY_R = 'dsr.reports', KEY_S = 'dsr.settings', KEY_PIN = 'dsr.pin', KEY_SITE = 'dsr.site';
 const DEFAULT_MATS = ['CEMENT','STEEL','M SAND','P SAND','20 MM AGREEGATE','INSULATION BLOCK','20 CM HALLOW BLOCK','20CM SOLID BLOCK','10 CM HALLOW BLOCK','10 CM SOLID BLOCK'];
+/* stock units: settings.units {material: unit} overrides these; a missing unit is blank */
+const DEFAULT_UNITS = { 'CEMENT':'BAGS', 'STEEL':'TON', 'M SAND':'CUM', 'P SAND':'CUM', '20 MM AGREEGATE':'CUM', '20 MM AGGREGATE':'CUM' };
+const UNITS = ['BAGS','TON','KG','CUM','M³','SQM','NOS','LTR','RMT','BUNDLE','ROLL','SHEET'];
+const unitOf = m => { m = String(m || '').trim().toUpperCase(); const u = (settings.units || {})[m];
+  return u != null ? u : DEFAULT_UNITS[m] != null ? DEFAULT_UNITS[m] : /BLOCK|BRICK/.test(m) ? 'NOS' : ''; };
 const GAS = !!(window.google && google.script && google.script.run);
 const API = 'https:/' + '/script.google.com/macros/s/AKfycbw99qf6indI_6ic6bpVi7FBK_9qWKI0JSwzHRYGWAZ31le_02OZWlyY8m1uuPi2kHbC/exec';
 const ONLINE = GAS || location.protocol === 'https:';
@@ -494,7 +500,7 @@ const FIELDS = {
   co:   [['name','Name of worker'],['trade','Trade','trade'],['status','Status','status'],['tin','Time in'],['tout','Time out']],
   rec:  [['desc','Description'],['qty','Quantity'],['party','Supplier']],
   sent: [['desc','Description'],['qty','Quantity'],['party','Supplier or site']],
-  stk:  [['mat','Material'],['open','Opening','number'],['recd','Received','number'],['issue','Issued','number'],['close','Closing','calc']],
+  stk:  [['mat','Material'],['unit','Unit','unit'],['open','Opening','number'],['recd','Received','number'],['issue','Issued','number'],['close','Closing','calc']],
   work: [['text','Work done']],
 };
 const CLS = { sub:'r-sub', co:'r-co', rec:'r-mat', sent:'r-mat', stk:'r-stk', work:'r-work' };
@@ -516,11 +522,11 @@ const allSites = () => [...new Set([settings.site, ...reports.map(r => r.site)].
 
 function newReport(prev, site){
   const r = { id: Date.now(), date: today(), site: site || settings.site, eng: settings.eng, tin: settings.tin, tout: settings.tout,
-    sub:[], co:[], rec:[{}], sent:[{}], work:[{},{},{}], photos:[], stk: settings.mats.map(m => ({ mat:m })) };
+    sub:[], co:[], rec:[{}], sent:[{}], work:[{},{},{}], photos:[], stk: settings.mats.map(m => ({ mat:m, unit:unitOf(m) })) };
   if (prev){
     // carry forward: closing → opening, keep the same labour list
-    r.stk = prev.stk.map(s => ({ mat:s.mat, open: closing(s) }));
-    settings.mats.forEach(m => { if (!r.stk.some(s => s.mat===m)) r.stk.push({ mat:m }); });
+    r.stk = prev.stk.map(s => ({ mat:s.mat, unit: s.unit != null && s.unit !== '' ? s.unit : unitOf(s.mat), open: closing(s) }));
+    settings.mats.forEach(m => { if (!r.stk.some(s => s.mat===m)) r.stk.push({ mat:m, unit:unitOf(m) }); });
     r.sub = copy(prev.sub);
     // same workers as yesterday, marked Present with today's default times
     r.co = copy(prev.co).filter(x => x.v===2 && (x.name || x.trade)).map(x => coCount(Object.assign(x, { status:'Present', tin:r.tin, tout:r.tout })));
@@ -544,6 +550,7 @@ function startReport(site){
 /* ---------- render form ---------- */
 function render(){
   $('trades').innerHTML = TRADES.map(t => `<option value="${t}">`).join('');
+  $('units').innerHTML = UNITS.map(t => `<option value="${t}">`).join('');
   $('f-date').value = cur.date; $('f-site').value = cur.site; $('f-eng').value = cur.eng;
   $('f-in').value = cur.tin; $('f-out').value = cur.tout;
   Object.keys(FIELDS).forEach(renderSec);
@@ -560,7 +567,8 @@ function renderSec(sec){
       : type==='status' ? `<select data-f="${sec}:${i}:${k}" aria-label="${lab}" class="st-${row.v===2 ? (row[k]||'Present') : 'old'}">${
           row.v===2 ? ['Present','Absent'].map(o => `<option${(row[k]||'Present')===o?' selected':''}>${o}</option>`).join('')
           : `<option>${esc([num(row.skilled)?row.skilled+' skilled':'', num(row.unskilled)?row.unskilled+' unskilled':''].filter(Boolean).join(', ') || 'Old entry')}</option>`}</select>`
-      : type==='trade' ? `<input list="trades" data-f="${sec}:${i}:${k}" value="${esc(row[k])}" placeholder="Mason, Helper…" aria-label="${lab}"${row.v===2?'':' disabled'}>`
+      : type==='unit' ? `<input list="units" data-f="${sec}:${i}:${k}" value="${esc(row[k])}" placeholder="BAGS…" aria-label="${lab}" autocapitalize="characters">`
+      : type==='trade' ?`<input list="trades" data-f="${sec}:${i}:${k}" value="${esc(row[k])}" placeholder="Mason, Helper…" aria-label="${lab}"${row.v===2?'':' disabled'}>`
       : `<input ${type==='number'?'type="number" inputmode="decimal" step="any"':''} data-f="${sec}:${i}:${k}" value="${esc(row[k])}" aria-label="${lab}">`
     }</div>`).join('')}
   </div>`).join('');
@@ -697,7 +705,13 @@ document.addEventListener('input', e => {
   if (t.id==='s-pin'){ pin = t.value.trim(); keep(KEY_PIN, pin); }
   const smap = { 's-site':'site','s-eng':'eng','s-in':'tin','s-out':'tout' };
   if (smap[t.id]) settings[smap[t.id]] = t.value;
-  if (t.id==='s-mats') settings.mats = t.value.split('\n').map(s=>s.trim()).filter(Boolean);
+  if (t.id==='s-mats'){
+    // one material per line, optional unit after a bar: "CEMENT | BAGS"
+    const lines = t.value.split('\n').map(s => s.split('|')).filter(p => p[0].trim());
+    settings.mats = lines.map(p => p[0].trim());
+    settings.units = Object.assign({}, settings.units || {});
+    lines.forEach(p => { settings.units[p[0].trim().toUpperCase()] = (p[1] || '').trim().toUpperCase(); });
+  }
   if (smap[t.id] || t.id==='s-mats'){
     keep(KEY_S, settings);
     clearTimeout(setTimer);
@@ -740,7 +754,7 @@ function showTab(tab){
   ['form','saved','settings'].forEach(x => $('tab-'+x).hidden = x!==tab);
   $('bar').hidden = tab!=='form';
   if (tab==='saved') renderList();
-  if (tab==='settings'){ $('s-pin').value=pin; $('s-site').value=settings.site; $('s-eng').value=settings.eng; $('s-in').value=settings.tin; $('s-out').value=settings.tout; $('s-mats').value=settings.mats.join('\n'); }
+  if (tab==='settings'){ $('s-pin').value=pin; $('s-site').value=settings.site; $('s-eng').value=settings.eng; $('s-in').value=settings.tin; $('s-out').value=settings.tout; $('s-mats').value=settings.mats.map(m => { const u = unitOf(m); return u ? m + ' | ' + u : m; }).join('\n'); }
   scrollTo(0,0);
 }
 
@@ -826,8 +840,8 @@ function sheetHTML(r, logoRow, links){
   <tr><td colspan="8" class="sec">SENTOUT MATERIALS DETAILS</td></tr>
   ${mat(r.sent, 'SUPPLIER OR SITE')}${docLinkRows(r.sentDocs)}
   <tr><td colspan="8" class="sec">STOCK POSITION</td></tr>
-  <tr><th></th><th>MATERIALS</th><th colspan="2">OPENING STOCK</th><th>RECEIVED</th><th>ISSUE FOR THE DAY</th><th colspan="2">CLOSING STOCK</th></tr>
-  ${r.stk.map((s,i) => `<tr><td class="c">${i+1}</td><td>${esc(s.mat)}</td><td colspan="2" class="c">${esc(s.open)}</td><td class="c">${esc(s.recd)}</td><td class="c">${esc(s.issue)}</td><td colspan="2" class="c">${esc(closing(s))}</td></tr>`).join('')}
+  <tr><th></th><th>MATERIALS</th><th>UNIT</th><th>OPENING STOCK</th><th>RECEIVED</th><th>ISSUE FOR THE DAY</th><th colspan="2">CLOSING STOCK</th></tr>
+  ${r.stk.map((s,i) => `<tr><td class="c">${i+1}</td><td>${esc(s.mat)}</td><td class="c">${esc(s.unit)}</td><td class="c">${esc(s.open)}</td><td class="c">${esc(s.recd)}</td><td class="c">${esc(s.issue)}</td><td colspan="2" class="c">${esc(closing(s))}</td></tr>`).join('')}
   <tr><td colspan="8" class="sec">WORK SUMMARY DETAILS</td></tr>
   ${pad(r.work.filter(w => w.text), 4).map((w,i) => `<tr><td class="c">${i+1}</td><td colspan="7">${esc(w.text).replace(/\n/g,'<br>')}</td></tr>`).join('')}
   ${photoRows(r, links)}
@@ -862,8 +876,8 @@ function printHTML(r){
   const docFigs = a => { const ds = (a || []).filter(p => p.id || p.src); return ds.length ? '<div class="p-photos">' +
     ds.map((p, i) => `<figure><img src="${esc(thumb(p, 1000))}" alt=""><figcaption>Delivery note photo ${i + 1}</figcaption></figure>`).join('') + '</div>' : ''; };
   const stock = r.stk.filter(s => s.mat && closing(s) !== '');
-  const stockBody = stock.length ? '<table><tr><th>Material</th><th class="n">Opening</th><th class="n">Received</th><th class="n">Issued</th><th class="n">Closing</th></tr>' +
-    stock.map(s => `<tr><td>${esc(s.mat)}</td><td class="n">${esc(s.open)}</td><td class="n">${esc(s.recd)}</td><td class="n">${esc(s.issue)}</td><td class="n close">${closing(s)}</td></tr>`).join('') + '</table>' : none;
+  const stockBody = stock.length ? '<table><tr><th>Material</th><th>Unit</th><th class="n">Opening</th><th class="n">Received</th><th class="n">Issued</th><th class="n">Closing</th></tr>' +
+    stock.map(s => `<tr><td>${esc(s.mat)}</td><td>${esc(s.unit)}</td><td class="n">${esc(s.open)}</td><td class="n">${esc(s.recd)}</td><td class="n">${esc(s.issue)}</td><td class="n close">${closing(s)}</td></tr>`).join('') + '</table>' : none;
   const work = r.work.filter(w => w.text);
   const workBody = work.length ? '<ol>' + work.map(w => `<li>${esc(w.text).replace(/\n/g, '<br>')}</li>`).join('') + '</ol>' : none;
   const photos = (r.photos || []).filter(p => p.id || p.src);
@@ -938,12 +952,16 @@ $('b-wa').addEventListener('click', () => {
   const L = ['*AL TARWI BUILDING CONTRACTING*', '*Daily Site Report*', `Date: ${fmtDate(cur.date)}`, `Site: ${cur.site}`, `Engineer: ${cur.eng}`, ''];
   const lab = (title, a) => { const f = a.filter(x => x.name || x.skilled || x.unskilled); if (!f.length) return;
     L.push(`*${title}*`); f.forEach(x => L.push(`- ${x.name||'-'}: Skilled ${num(x.skilled)}, Unskilled ${num(x.unskilled)}`)); L.push(''); };
-  lab('Sub contractor labour', cur.sub); lab('Company labour', cur.co);
+  lab('Sub contractor labour', cur.sub);
+  const co = cur.co.filter(x => x.name || x.trade || x.skilled || x.unskilled);
+  if (co.length){ L.push(`*Company labour* (${coSum(cur.co)})`);
+    co.forEach(x => L.push(x.v === 2 ? `- ${x.name || '-'}${x.trade ? ' (' + x.trade + ')' : ''}: ${x.status || 'Present'}`
+                                     : `- ${x.name || '-'}: Skilled ${num(x.skilled)}, Unskilled ${num(x.unskilled)}`)); L.push(''); }
   const mat = (title, a) => { const f = a.filter(x => x.desc); if (!f.length) return;
     L.push(`*${title}*`); f.forEach(x => L.push(`- ${x.desc} ${x.qty||''}${x.party?' ('+x.party+')':''}`)); L.push(''); };
   mat('Received materials', cur.rec); mat('Sent-out materials', cur.sent);
   const st = cur.stk.filter(s => closing(s) !== '');
-  if (st.length){ L.push('*Stock position* (open / recd / issue / close)'); st.forEach(s => L.push(`- ${s.mat}: ${num(s.open)} / ${num(s.recd)} / ${num(s.issue)} / ${closing(s)}`)); L.push(''); }
+  if (st.length){ L.push('*Stock position* (open / recd / issue / close)'); st.forEach(s => L.push(`- ${s.mat}${s.unit ? ' (' + s.unit + ')' : ''}: ${num(s.open)} / ${num(s.recd)} / ${num(s.issue)} / ${closing(s)}`)); L.push(''); }
   const w = cur.work.filter(x => x.text);
   if (w.length){ L.push('*Work summary*'); w.forEach((x,i) => L.push(`${i+1}. ${x.text}`)); }
   const ph = (cur.photos || []).filter(p => p.id);
