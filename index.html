@@ -48,7 +48,15 @@ textarea{resize:vertical;min-height:40px}
 .row{display:grid;gap:6px;align-items:end;border:1px dashed var(--line);border-radius:8px;padding:8px 28px 8px 8px;position:relative}
 .row>div{min-width:0}
 .row .x{position:absolute;top:2px;right:2px;border:0;background:none;color:var(--danger);font-size:18px;cursor:pointer;padding:2px 7px}
-.r-sub,.r-co{grid-template-columns:2fr 1fr 1fr 1fr 1fr}
+.r-sub{grid-template-columns:2fr 1fr 1fr 1fr 1fr}
+.r-co{grid-template-columns:2fr 1.4fr 1.1fr 1fr 1fr}
+select{width:100%;padding:8px 9px;border:1.5px solid var(--line);border-radius:11px;font:inherit;font-weight:600;background:var(--field);color:inherit;min-width:0;transition:border-color .2s,box-shadow .25s,background .25s,color .25s}
+select:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 4px var(--glow)}
+select.st-Present{color:#17734a;background:color-mix(in srgb,#17734a 10%,var(--field));border-color:color-mix(in srgb,#17734a 40%,var(--line))}
+select.st-Absent{color:#b8321f;background:color-mix(in srgb,#b8321f 10%,var(--field));border-color:color-mix(in srgb,#b8321f 40%,var(--line))}
+select.st-old{font-weight:400;color:var(--muted)}
+@media (prefers-color-scheme: dark){select.st-Present{color:#4ade80}select.st-Absent{color:#ff8a75}}
+.row:has(select.st-Absent) input:not([data-f$=":name"]):not([data-f$=":trade"]){opacity:.45}
 .r-mat{grid-template-columns:2fr 1fr 1.5fr}
 .r-stk{grid-template-columns:1.6fr 1fr 1fr 1fr 1fr}
 .r-work{grid-template-columns:1fr}
@@ -346,7 +354,9 @@ main[data-dir=l] section:not([hidden]){animation:tabL .45s var(--ease) both}
     <div class="rows" id="sub"></div><button class="add" data-add="sub">+ Add contractor</button></div></div>
 
   <div class="card"><h2>COMPANY LABOUR DETAILS <span class="tot" id="t-co"></span></h2><div class="body">
-    <div class="rows" id="co"></div><button class="add" data-add="co">+ Add labour</button></div></div>
+    <div class="rows" id="co"></div><button class="add" data-add="co">+ Add worker</button>
+    <p class="hint">One row per worker. Helper / Labour count as unskilled, other trades as skilled. Tomorrow's report starts with the same workers marked Present.</p>
+    <datalist id="trades"></datalist></div></div>
 
   <div class="card"><h2>RECEIVED MATERIALS DETAILS</h2><div class="body">
     <div class="rows" id="rec"></div><button class="add" data-add="rec">+ Add received material</button></div></div>
@@ -464,7 +474,7 @@ let cur, dirty = false;
 /* ---------- row definitions per section ---------- */
 const FIELDS = {
   sub:  [['name','Name of contractor'],['skilled','Skilled','number'],['unskilled','Unskilled','number'],['tin','Reporting'],['tout','Leaving']],
-  co:   [['name','Name of the labour'],['skilled','Skilled','number'],['unskilled','Unskilled','number'],['tin','Reporting'],['tout','Leaving']],
+  co:   [['name','Name of worker'],['trade','Trade','trade'],['status','Status','status'],['tin','Time in'],['tout','Time out']],
   rec:  [['desc','Description'],['qty','Quantity'],['party','Supplier']],
   sent: [['desc','Description'],['qty','Quantity'],['party','Supplier or site']],
   stk:  [['mat','Material'],['open','Opening','number'],['recd','Received','number'],['issue','Issued','number'],['close','Closing','calc']],
@@ -472,7 +482,17 @@ const FIELDS = {
 };
 const CLS = { sub:'r-sub', co:'r-co', rec:'r-mat', sent:'r-mat', stk:'r-stk', work:'r-work' };
 
-const blankRow = sec => (sec==='sub'||sec==='co') ? { tin:cur.tin, tout:cur.tout } : {};
+const blankRow = sec => sec==='co' ? { tin:cur.tin, tout:cur.tout, status:'Present', v:2 } : sec==='sub' ? { tin:cur.tin, tout:cur.tout } : {};
+/* company labour: one row per worker (v:2). Skilled / unskilled is worked out from the trade,
+   so totals, the Google Sheet and the registers keep working. Older rows (no v) keep their counts. */
+const TRADES = ['Mason','Helper','Carpenter','Steel fixer','Electrician','Plumber','Painter','Tile fixer','Plasterer','Welder','Driver','Operator','Foreman','Labour'];
+const UNSKILLED = /helper|labou?r|cleaner|watch|unskilled/i;
+const coCount = x => { if (x.v !== 2) return x;
+  const here = x.status !== 'Absent' && !!(String(x.name||'').trim() || String(x.trade||'').trim()), u = UNSKILLED.test(x.trade || '');
+  x.skilled = here && !u ? 1 : ''; x.unskilled = here && u ? 1 : ''; return x; };
+const coSum = a => { const s = a.reduce((t,x)=>t+num(x.skilled),0), u = a.reduce((t,x)=>t+num(x.unskilled),0);
+  const abs = a.filter(x => x.v===2 && x.status==='Absent' && (x.name||x.trade)).length;
+  return `Present ${s+u}${abs ? ' · Absent ' + abs : ''} · Skilled ${s} · Unskilled ${u}`; };
 const closing = s => (s.open==null||s.open==='') && !s.recd && !s.issue ? '' : +(num(s.open) + num(s.recd) - num(s.issue)).toFixed(3);
 const latest = site => reports.filter(r => !site || r.site === site).sort((a,b) => b.date.localeCompare(a.date) || b.id-a.id)[0];
 const allSites = () => [...new Set([settings.site, ...reports.map(r => r.site)].map(s => (s || '').trim()).filter(Boolean))].sort();
@@ -484,11 +504,13 @@ function newReport(prev, site){
     // carry forward: closing → opening, keep the same labour list
     r.stk = prev.stk.map(s => ({ mat:s.mat, open: closing(s) }));
     settings.mats.forEach(m => { if (!r.stk.some(s => s.mat===m)) r.stk.push({ mat:m }); });
-    r.sub = copy(prev.sub); r.co = copy(prev.co);
+    r.sub = copy(prev.sub);
+    // same workers as yesterday, marked Present with today's default times
+    r.co = copy(prev.co).filter(x => x.v===2 && (x.name || x.trade)).map(x => coCount(Object.assign(x, { status:'Present', tin:r.tin, tout:r.tout })));
     r.site = prev.site; r.eng = prev.eng;
   }
   if (!r.sub.length) r.sub = [{ tin:r.tin, tout:r.tout }];
-  if (!r.co.length)  r.co  = [{ tin:r.tin, tout:r.tout }];
+  if (!r.co.length)  r.co  = [{ tin:r.tin, tout:r.tout, status:'Present', v:2 }];
   return r;
 }
 /* open today's report for a site (the last site used on this phone by default);
@@ -503,6 +525,7 @@ function startReport(site){
 
 /* ---------- render form ---------- */
 function render(){
+  $('trades').innerHTML = TRADES.map(t => `<option value="${t}">`).join('');
   $('f-date').value = cur.date; $('f-site').value = cur.site; $('f-eng').value = cur.eng;
   $('f-in').value = cur.tin; $('f-out').value = cur.tout;
   Object.keys(FIELDS).forEach(renderSec);
@@ -516,6 +539,10 @@ function renderSec(sec){
     ${FIELDS[sec].map(([k, lab, type]) => `<div><label>${lab}</label>${
       type==='calc' ? `<input class="closing" readonly tabindex="-1" value="${esc(closing(row))}" data-close aria-label="Closing stock">`
       : sec==='work' ? `<textarea data-f="${sec}:${i}:${k}" rows="2" aria-label="${lab}">${esc(row[k])}</textarea>`
+      : type==='status' ? `<select data-f="${sec}:${i}:${k}" aria-label="${lab}" class="st-${row.v===2 ? (row[k]||'Present') : 'old'}">${
+          row.v===2 ? ['Present','Absent'].map(o => `<option${(row[k]||'Present')===o?' selected':''}>${o}</option>`).join('')
+          : `<option>${esc([num(row.skilled)?row.skilled+' skilled':'', num(row.unskilled)?row.unskilled+' unskilled':''].filter(Boolean).join(', ') || 'Old entry')}</option>`}</select>`
+      : type==='trade' ? `<input list="trades" data-f="${sec}:${i}:${k}" value="${esc(row[k])}" placeholder="Mason, Helper…" aria-label="${lab}"${row.v===2?'':' disabled'}>`
       : `<input ${type==='number'?'type="number" inputmode="decimal" step="any"':''} data-f="${sec}:${i}:${k}" value="${esc(row[k])}" aria-label="${lab}">`
     }</div>`).join('')}
   </div>`).join('');
@@ -524,7 +551,7 @@ function totals(){
   const t = a => [a.reduce((s,r)=>s+num(r.skilled),0), a.reduce((s,r)=>s+num(r.unskilled),0)];
   const [a,b] = t(cur.sub), [c,d] = t(cur.co);
   $('t-sub').textContent = `Skilled ${a} · Unskilled ${b}`;
-  $('t-co').textContent  = `Skilled ${c} · Unskilled ${d}`;
+  $('t-co').textContent  = coSum(cur.co);
 }
 
 /* ---------- site photos ---------- */
@@ -607,6 +634,7 @@ document.addEventListener('input', e => {
   if (f){
     const [sec, i, k] = f.split(':');
     cur[sec][i][k] = t.value;
+    if (sec==='co'){ coCount(cur.co[i]); if (k==='status') t.className = 'st-' + t.value; }
     if (sec==='stk') t.closest('.row').querySelector('[data-close]').value = closing(cur.stk[i]);
     if (sec==='sub'||sec==='co') totals();
     dirty = true; return;
@@ -732,9 +760,10 @@ function sheetHTML(r, logoRow, links){
   ${lab(r.sub, 1)}
   <tr><th></th><th>TOTAL</th><th>${sum(r.sub,'skilled')}</th><th>${sum(r.sub,'unskilled')}</th><th colspan="4"></th></tr>
   <tr><td colspan="8" class="sec">COMPANY LABOUR DETAILS</td></tr>
-  <tr><th></th><th>NAME OF THE LABOUR</th><th>SKILLED</th><th>UNSKILLED</th><th colspan="4"></th></tr>
-  ${lab(r.co, Math.max(used(r.sub).length, 2) + 1)}
-  <tr><th></th><th>TOTAL</th><th>${sum(r.co,'skilled')}</th><th>${sum(r.co,'unskilled')}</th><th colspan="4"></th></tr>
+  <tr><th></th><th>NAME OF WORKER</th><th>TRADE</th><th>STATUS</th><th colspan="2">TIME IN</th><th colspan="2">TIME OUT</th></tr>
+  ${pad(r.co.filter(x => x.name || x.trade || x.skilled || x.unskilled), 2).map((x,i) => { const old = x.v!==2 && (x.name||x.skilled||x.unskilled), abs = x.v===2 && x.status==='Absent';
+    return `<tr><td class="c">${i+1}</td><td>${esc(x.name)}</td><td class="c">${old ? esc([num(x.skilled)?x.skilled+' skilled':'', num(x.unskilled)?x.unskilled+' unskilled':''].filter(Boolean).join(', ')) : esc(x.trade)}</td><td class="c">${x.v===2 ? esc(x.status||'Present') : old ? 'Present' : ''}</td><td colspan="2" class="c">${abs ? '-' : esc(x.tin)}</td><td colspan="2" class="c">${abs ? '-' : esc(x.tout)}</td></tr>`; }).join('')}
+  <tr><th></th><th colspan="7" style="text-align:left">TOTAL: ${coSum(r.co).toUpperCase()}</th></tr>
   <tr><td colspan="8" class="sec">RECEIVED MATERIALS DETAILS</td></tr>
   ${mat(r.rec, 'SUPPLIER')}
   <tr><td colspan="8" class="sec">SENTOUT MATERIALS DETAILS</td></tr>
@@ -759,6 +788,14 @@ function printHTML(r){
     return `<table><tr><th>${head}</th><th class="n">Skilled</th><th class="n">Unskilled</th><th>Reporting</th><th>Leaving</th></tr>` +
       rows.map(x => `<tr><td>${esc(x.name)}</td><td class="n">${esc(x.skilled)}</td><td class="n">${esc(x.unskilled)}</td><td>${esc(x.tin)}</td><td>${esc(x.tout)}</td></tr>`).join('') + '</table>';
   };
+  const workers = a => {
+    const rows = a.filter(x => x.name || x.trade || x.skilled || x.unskilled);
+    if (!rows.length) return none;
+    return '<table><tr><th>Name of worker</th><th>Trade</th><th>Status</th><th>Time in</th><th>Time out</th></tr>' +
+      rows.map(x => { const old = x.v !== 2, abs = !old && x.status === 'Absent';
+        const trade = old ? [num(x.skilled)?x.skilled+' skilled':'', num(x.unskilled)?x.unskilled+' unskilled':''].filter(Boolean).join(', ') : x.trade;
+        return `<tr><td>${esc(x.name)}</td><td>${esc(trade)}</td><td style="font-weight:600;color:${abs ? '#b8321f' : '#17734a'}">${old ? 'Present' : esc(x.status || 'Present')}</td><td>${abs ? '–' : esc(x.tin)}</td><td>${abs ? '–' : esc(x.tout)}</td></tr>`; }).join('') + '</table>';
+  };
   const mats = (a, party) => {
     const rows = a.filter(x => x.desc || x.qty);
     if (!rows.length) return none;
@@ -779,7 +816,7 @@ function printHTML(r){
   return `<div class="p-head"><img src="${LOGO}" alt=""><div><h1>Daily Site Report</h1><div class="sub">AL TARWI BUILDING CONTRACTING</div></div></div>
   <div class="p-info">${info.map(([k, v]) => `<div><b>${k}</b>${esc(v)}</div>`).join('')}</div>
   ${card('SUB CONTRACTOR LABOUR DETAILS', labour(r.sub, 'Name of contractor'), 'Skilled ' + sum(r.sub, 'skilled') + ' · Unskilled ' + sum(r.sub, 'unskilled'))}
-  ${card('COMPANY LABOUR DETAILS', labour(r.co, 'Name of the labour'), 'Skilled ' + sum(r.co, 'skilled') + ' · Unskilled ' + sum(r.co, 'unskilled'))}
+  ${card('COMPANY LABOUR DETAILS', workers(r.co), coSum(r.co))}
   ${card('RECEIVED MATERIALS DETAILS', mats(r.rec, 'Supplier'))}
   ${card('SENTOUT MATERIALS DETAILS', mats(r.sent, 'Supplier or site'))}
   ${card('STOCK POSITION', stockBody)}
