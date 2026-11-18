@@ -56,6 +56,17 @@ select.st-Present{color:#17734a;background:color-mix(in srgb,#17734a 10%,var(--f
 select.st-Absent{color:#b8321f;background:color-mix(in srgb,#b8321f 10%,var(--field));border-color:color-mix(in srgb,#b8321f 40%,var(--line))}
 select.st-old{font-weight:400;color:var(--muted)}
 @media (prefers-color-scheme: dark){select.st-Present{color:#4ade80}select.st-Absent{color:#ff8a75}}
+.scan{display:flex;flex-direction:column;align-items:center;gap:2px;margin-bottom:12px;padding:14px 12px 12px;border-radius:14px;cursor:pointer;color:#fff;text-align:center;
+  background:linear-gradient(135deg,#0f8a7a,#1d64c4);box-shadow:0 8px 20px -10px #0f8a7aaa;position:relative;overflow:hidden;transition:transform .2s var(--ease),box-shadow .25s}
+.scan::before{content:"";width:26px;height:26px;background:#fff;-webkit-mask:var(--i-scan) center/contain no-repeat;mask:var(--i-scan) center/contain no-repeat;margin-bottom:2px}
+.scan::after{content:"";position:absolute;left:0;right:0;height:40%;top:-40%;background:linear-gradient(transparent,#ffffff40,transparent);animation:scanLine 2.8s ease-in-out infinite}
+.scan b{font-size:15px}.scan small{opacity:.85;font-size:12px}
+.scan:hover{box-shadow:0 12px 24px -10px #0f8a7acc}.scan:active{transform:scale(.98)}
+@keyframes scanLine{0%,30%{top:-40%}100%{top:120%}}
+.docs{margin-top:10px}.docs:empty{display:none}
+.docs .ph img{aspect-ratio:3/4}
+.row.scanned{animation:scanned 2.4s var(--ease)}
+@keyframes scanned{0%,40%{box-shadow:0 0 0 3px #0f8a7a88;background:color-mix(in srgb,#38c7a5 18%,var(--card))}}
 .row:has(select.st-Absent) input:not([data-f$=":name"]):not([data-f$=":trade"]){opacity:.45}
 .r-mat{grid-template-columns:2fr 1fr 1.5fr}
 .r-stk{grid-template-columns:1.6fr 1fr 1fr 1fr 1fr}
@@ -359,10 +370,16 @@ main[data-dir=l] section:not([hidden]){animation:tabL .45s var(--ease) both}
     <datalist id="trades"></datalist></div></div>
 
   <div class="card"><h2>RECEIVED MATERIALS DETAILS</h2><div class="body">
-    <div class="rows" id="rec"></div><button class="add" data-add="rec">+ Add received material</button></div></div>
+    <label class="scan" for="scan-rec"><b>Scan delivery note</b><small>Take a photo – the items fill in by themselves</small></label>
+    <input type="file" id="scan-rec" accept="image/*" hidden>
+    <div class="rows" id="rec"></div><button class="add" data-add="rec">+ Add received material</button>
+    <div class="photos docs" id="docs-rec"></div></div></div>
 
   <div class="card"><h2>SENTOUT MATERIALS DETAILS</h2><div class="body">
-    <div class="rows" id="sent"></div><button class="add" data-add="sent">+ Add sent-out material</button></div></div>
+    <label class="scan" for="scan-sent"><b>Scan gate pass / delivery note</b><small>Take a photo – the items fill in by themselves</small></label>
+    <input type="file" id="scan-sent" accept="image/*" hidden>
+    <div class="rows" id="sent"></div><button class="add" data-add="sent">+ Add sent-out material</button>
+    <div class="photos docs" id="docs-sent"></div></div></div>
 
   <div class="card"><h2>STOCK POSITION</h2><div class="body">
     <div class="rows" id="stk"></div><button class="add" data-add="stk">+ Add material</button>
@@ -509,6 +526,7 @@ function newReport(prev, site){
     r.co = copy(prev.co).filter(x => x.v===2 && (x.name || x.trade)).map(x => coCount(Object.assign(x, { status:'Present', tin:r.tin, tout:r.tout })));
     r.site = prev.site; r.eng = prev.eng;
   }
+  r.recDocs = []; r.sentDocs = [];
   if (!r.sub.length) r.sub = [{ tin:r.tin, tout:r.tout }];
   if (!r.co.length)  r.co  = [{ tin:r.tin, tout:r.tout, status:'Present', v:2 }];
   return r;
@@ -530,7 +548,7 @@ function render(){
   $('f-in').value = cur.tin; $('f-out').value = cur.tout;
   Object.keys(FIELDS).forEach(renderSec);
   cur.photos = cur.photos || [];
-  renderPhotos();
+  renderPhotos(); renderDocs('rec'); renderDocs('sent');
   totals();
 }
 function renderSec(sec){
@@ -574,17 +592,17 @@ function renderPhotos(){
   }).join('');
   $('t-photos').textContent = cur.photos.length ? cur.photos.length + ' photo' + (cur.photos.length > 1 ? 's' : '') : '';
 }
-/* shrink a camera photo to at most 1600 px so it uploads quickly */
-function shrink(file){
+/* shrink a camera photo to at most 1600 px so it uploads quickly (documents: 2000 px, sharper) */
+function shrink(file, max = 1600, q = 0.75){
   return new Promise((res, rej) => {
     const img = new Image();
     img.onload = () => {
-      const s = Math.min(1, 1600 / Math.max(img.width, img.height));
+      const s = Math.min(1, max / Math.max(img.width, img.height));
       const c = document.createElement('canvas');
       c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
       c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
       URL.revokeObjectURL(img.src);
-      res(c.toDataURL('image/jpeg', 0.75));
+      res(c.toDataURL('image/jpeg', q));
     };
     img.onerror = () => rej(new Error('Could not read that photo'));
     img.src = URL.createObjectURL(file);
@@ -611,6 +629,41 @@ $('photo-input').onchange = async e => {
   }
   if (files.length) toast('Photos added — tap Save to keep them in the report');
 };
+/* ---------- delivery note / gate pass scanning (received + sent-out materials) ---------- */
+const docKey = sec => sec + 'Docs';
+const busyPhotos = r => [...(r.photos || []), ...(r.recDocs || []), ...(r.sentDocs || [])].some(p => p.uploading);
+function renderDocs(sec){
+  const a = cur[docKey(sec)] = cur[docKey(sec)] || [];
+  $('docs-' + sec).innerHTML = a.map((p, i) => `<div class="ph doc${p.uploading ? ' up' : ''}">
+    <img src="${esc(thumb(p))}" alt="Delivery note photo" loading="lazy">
+    ${p.uploading ? '<span class="st">Reading…</span>' : ''}
+    <button class="x" data-deld="${sec}:${i}" aria-label="Remove photo">×</button></div>`).join('');
+}
+['rec', 'sent'].forEach(sec => { $('scan-' + sec).onchange = async e => {
+  const file = e.target.files[0]; e.target.value = ''; if (!file) return;
+  const report = cur, k = docKey(sec); report[k] = report[k] || [];
+  let p;
+  try {
+    p = { src: await shrink(file, 2000, 0.85), uploading: ONLINE };
+    report[k].push(p); dirty = true; if (cur === report) renderDocs(sec);
+    if (!ONLINE){ toast('Photo added. Reading the items works in the online app only.'); return; }
+    const what = sec === 'rec' ? 'received' : 'sent out';
+    const res = await server('scanDoc', p.src, sec, `${report.site} ${fmtDate(report.date)} ${what} ${report[k].length}.jpg`, pin);
+    p.id = res.id; delete p.src; delete p.uploading;
+    const items = res.items || [];
+    if (items.length){
+      report[sec] = report[sec].filter(x => x.desc || x.qty || x.party).concat(items);
+      if (cur === report){ renderSec(sec); [...$(sec).querySelectorAll('.row')].slice(-items.length).forEach(r => r.classList.add('scanned')); }
+      toast(items.length + ' item' + (items.length > 1 ? 's' : '') + ' added from the photo – please check them');
+    } else toast(res.note === 'nokey' ? 'Photo saved. Automatic reading is not switched on yet – please type the items.'
+                                      : 'Photo saved, but the items could not be read. Please type them.');
+  } catch (err) {
+    if (p) report[k].splice(report[k].indexOf(p), 1);
+    toast('Scan failed: ' + errText(err));
+  }
+  if (cur === report) renderDocs(sec);
+}; });
+const docLinkRows = a => (a || []).filter(p => p.id).map((p, i) => `<tr><td></td><td colspan="7">Delivery note photo ${i + 1}: <a href="${viewUrl(p)}">${viewUrl(p)}</a></td></tr>`).join('');
 const photoRows = (r, links) => {
   const ps = (r.photos || []).filter(p => p.id || p.src);
   if (!ps.length) return '';
@@ -663,6 +716,10 @@ document.addEventListener('click', async e => {
     if (!await ask('Remove this photo from the report?', 'Remove')) return;
     cur.photos.splice(+d.delp, 1); renderPhotos(); dirty = true;
   }
+  if (d.deld){
+    if (!await ask('Remove this delivery note photo? The items already filled in stay.', 'Remove')) return;
+    const [sec, i] = d.deld.split(':'); cur[docKey(sec)].splice(+i, 1); renderDocs(sec); dirty = true;
+  }
   if (d.tab) showTab(d.tab);
   if (d.open){
     if (dirty && !await ask('The current report has unsaved changes. Discard them and open this report?', 'Discard & open')) return;
@@ -703,7 +760,7 @@ function renderList(){
 
 /* ---------- save / new ---------- */
 async function save(){
-  if ((cur.photos || []).some(p => p.uploading)){ toast('Wait for the photos to finish uploading'); return false; }
+  if (busyPhotos(cur)){ toast('Wait for the photos to finish uploading'); return false; }
   const dup = reports.find(r => r.date===cur.date && r.site===cur.site && r.id!==cur.id);
   if (dup && !await ask(`A report for ${fmtDate(cur.date)} (${cur.site}) already exists. Replace it?`, 'Replace')) return false;
   const r = copy(cur);
@@ -765,9 +822,9 @@ function sheetHTML(r, logoRow, links){
     return `<tr><td class="c">${i+1}</td><td>${esc(x.name)}</td><td class="c">${old ? esc([num(x.skilled)?x.skilled+' skilled':'', num(x.unskilled)?x.unskilled+' unskilled':''].filter(Boolean).join(', ')) : esc(x.trade)}</td><td class="c">${x.v===2 ? esc(x.status||'Present') : old ? 'Present' : ''}</td><td colspan="2" class="c">${abs ? '-' : esc(x.tin)}</td><td colspan="2" class="c">${abs ? '-' : esc(x.tout)}</td></tr>`; }).join('')}
   <tr><th></th><th colspan="7" style="text-align:left">TOTAL: ${coSum(r.co).toUpperCase()}</th></tr>
   <tr><td colspan="8" class="sec">RECEIVED MATERIALS DETAILS</td></tr>
-  ${mat(r.rec, 'SUPPLIER')}
+  ${mat(r.rec, 'SUPPLIER')}${docLinkRows(r.recDocs)}
   <tr><td colspan="8" class="sec">SENTOUT MATERIALS DETAILS</td></tr>
-  ${mat(r.sent, 'SUPPLIER OR SITE')}
+  ${mat(r.sent, 'SUPPLIER OR SITE')}${docLinkRows(r.sentDocs)}
   <tr><td colspan="8" class="sec">STOCK POSITION</td></tr>
   <tr><th></th><th>MATERIALS</th><th colspan="2">OPENING STOCK</th><th>RECEIVED</th><th>ISSUE FOR THE DAY</th><th colspan="2">CLOSING STOCK</th></tr>
   ${r.stk.map((s,i) => `<tr><td class="c">${i+1}</td><td>${esc(s.mat)}</td><td colspan="2" class="c">${esc(s.open)}</td><td class="c">${esc(s.recd)}</td><td class="c">${esc(s.issue)}</td><td colspan="2" class="c">${esc(closing(s))}</td></tr>`).join('')}
@@ -802,6 +859,8 @@ function printHTML(r){
     return `<table><tr><th>Description</th><th>Quantity</th><th>${party}</th></tr>` +
       rows.map(x => `<tr><td>${esc(x.desc)}</td><td>${esc(x.qty)}</td><td>${esc(x.party)}</td></tr>`).join('') + '</table>';
   };
+  const docFigs = a => { const ds = (a || []).filter(p => p.id || p.src); return ds.length ? '<div class="p-photos">' +
+    ds.map((p, i) => `<figure><img src="${esc(thumb(p, 1000))}" alt=""><figcaption>Delivery note photo ${i + 1}</figcaption></figure>`).join('') + '</div>' : ''; };
   const stock = r.stk.filter(s => s.mat && closing(s) !== '');
   const stockBody = stock.length ? '<table><tr><th>Material</th><th class="n">Opening</th><th class="n">Received</th><th class="n">Issued</th><th class="n">Closing</th></tr>' +
     stock.map(s => `<tr><td>${esc(s.mat)}</td><td class="n">${esc(s.open)}</td><td class="n">${esc(s.recd)}</td><td class="n">${esc(s.issue)}</td><td class="n close">${closing(s)}</td></tr>`).join('') + '</table>' : none;
@@ -817,8 +876,8 @@ function printHTML(r){
   <div class="p-info">${info.map(([k, v]) => `<div><b>${k}</b>${esc(v)}</div>`).join('')}</div>
   ${card('SUB CONTRACTOR LABOUR DETAILS', labour(r.sub, 'Name of contractor'), 'Skilled ' + sum(r.sub, 'skilled') + ' · Unskilled ' + sum(r.sub, 'unskilled'))}
   ${card('COMPANY LABOUR DETAILS', workers(r.co), coSum(r.co))}
-  ${card('RECEIVED MATERIALS DETAILS', mats(r.rec, 'Supplier'))}
-  ${card('SENTOUT MATERIALS DETAILS', mats(r.sent, 'Supplier or site'))}
+  ${card('RECEIVED MATERIALS DETAILS', mats(r.rec, 'Supplier') + docFigs(r.recDocs))}
+  ${card('SENTOUT MATERIALS DETAILS', mats(r.sent, 'Supplier or site') + docFigs(r.sentDocs))}
   ${card('STOCK POSITION', stockBody)}
   ${card('WORK SUMMARY DETAILS', workBody)}
   ${photos.length ? card('SITE PHOTOS', photoBody, photos.length + (photos.length > 1 ? ' photos' : ' photo')) : ''}
@@ -828,7 +887,7 @@ function printHTML(r){
 const printHere = () => { $('sheet').innerHTML = printHTML(cur); waitImages($('sheet')).then(() => print()); };
 /* PDF: Google builds the file with the photos embedded and saves it in Drive */
 $('b-print').onclick = async () => {
-  if ((cur.photos || []).some(p => p.uploading)) { toast('Wait for the photos to finish uploading'); return; }
+  if (busyPhotos(cur)) { toast('Wait for the photos to finish uploading'); return; }
   if (!ONLINE) { printHere(); return; }
   const btn = $('b-print'); btn.disabled = true; btn.textContent = 'Making PDF…';
   try {
@@ -950,7 +1009,8 @@ if (ONLINE){
     file:"<path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/><path d='M14 2v6h6M16 13H8M16 17H8M10 9H8'/>",
     grid:"<rect x='3' y='3' width='18' height='18' rx='2'/><path d='M3 9h18M3 15h18M9 3v18'/>",
     chat:"<path d='M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.6A8.4 8.4 0 1 1 21 11.5z'/>",
-    pin:"<path d='M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z'/><circle cx='12' cy='10' r='3'/>"
+    pin:"<path d='M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z'/><circle cx='12' cy='10' r='3'/>",
+    scan:"<path d='M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2'/><path d='M7 12h10M8 8h8M8 16h5'/>"
   };
   for (const k in I) root.setProperty('--i-' + k, 'url("data:image/svg+xml,' + encodeURIComponent(
     "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>" + I[k] + '</svg>') + '")');
