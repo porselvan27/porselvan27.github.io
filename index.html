@@ -372,6 +372,42 @@ nav button[data-tab=reg]{--ic:var(--i-book)}
 .reg-acts{display:flex;gap:8px;flex-wrap:wrap;padding:12px 16px 16px}
 .reg-acts .btn{flex:1 1 140px}
 .empty{padding:26px 16px;text-align:center;color:var(--muted)}
+#r-table.mon{max-height:none;border-top:0;padding:4px 10px 0}
+/* monthly attendance sheet (screen + print) */
+.ma{background:#fff;color:#18212f;border-radius:12px;font:12px var(--f-body);color-scheme:light}
+.ma-head{background:linear-gradient(120deg,#0b2a5b,#1d64c4);color:#fff;border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:12px}
+.ma-head img{height:42px;border-radius:6px;background:#fff;padding:2px}
+.ma-head h1{margin:0;font:700 17px var(--f-display);letter-spacing:.04em}
+.ma-head small{color:#c3d2ec;letter-spacing:.06em}
+.ma-info{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:6px;margin:10px 0 8px}
+.ma-info div{border:1px solid #cfd8e6;border-radius:8px;padding:5px 8px;text-align:center;font-weight:600;background:#f6f8fc}
+.ma-info b{display:block;font:600 9.5px var(--f-body);color:#5d6a7e;text-transform:uppercase;letter-spacing:.05em}
+.ma-leg{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+.ma-leg span{display:inline-flex;border-radius:6px;overflow:hidden;border:1px solid #cfd8e6;font-size:11px}
+.ma-leg i{font-style:normal;padding:3px 8px}.ma-leg i+i{font-weight:700;min-width:30px;text-align:center}
+.ma-note{font-size:11px;color:#5d6a7e;margin:0 0 8px}
+.ma-wrap{overflow:auto;border:1px solid #cfd8e6;border-radius:8px;-webkit-overflow-scrolling:touch}
+.ma table{border-collapse:collapse;font-size:11px;width:100%}
+.ma th,.ma td{border:1px solid #dfe5ee;padding:4px 3px;text-align:center;white-space:nowrap}
+.ma thead th{background:#0b2a5b;color:#fff;font-weight:600}
+.ma thead tr+tr th{background:#163d7a;font-weight:500;font-size:9.5px}
+.ma thead th.off{background:#5d6a7e}
+.ma td.off{background:#e6e9ef}
+.ma td.nm,.ma th.nm{text-align:left;padding-inline:7px;font-weight:600}
+.ma td.tr{text-align:left;color:#5d6a7e;padding-inline:6px}
+.ma td.pr{background:#d5f0e1;color:#17734a;font-weight:700}
+.ma td.ab{background:#f8d0cb;color:#b8321f;font-weight:700}
+.ma td.sb{background:#dfe9fb;color:#1d64c4;font-weight:700}
+.ma td.tp{font-weight:700;color:#17734a;background:#f1faf5}.ma td.ta{font-weight:700;color:#b8321f;background:#fdf3f2}
+.ma td.st{text-align:left;font-size:10px;color:#5d6a7e}
+.ma tr.tot td{background:#e3eaf5;font-weight:700;color:#0b2a5b}
+.ma tr.sec td{background:#e3eaf5;color:#0b2a5b;font-weight:700;text-align:left;padding:6px 8px;letter-spacing:.04em}
+.ma td.none{padding:18px;color:#5d6a7e}
+.ma tbody tr:not(.tot):not(.sec):hover td:not(.pr):not(.ab):not(.sb):not(.off){background:#f3f6fb}
+.ma h3{font:700 13px var(--f-display);color:#0b2a5b;margin:14px 0 6px;letter-spacing:.05em}
+.ma-sum td:first-child{font-weight:700;text-align:left;padding-inline:8px}
+.ma .sig{display:flex;justify-content:space-between;margin:34px 0 6px;gap:24px}
+.ma .sig div{flex:1;border-top:1px solid #18212f;padding-top:4px;text-align:center;font-size:11px;font-weight:600}
 #tab-reg .grid{grid-template-columns:1fr 1fr}#tab-reg .grid>div:first-child{grid-column:1/-1}
 @media (min-width:700px){#tab-reg .grid{grid-template-columns:2fr 1fr 1fr}#tab-reg .grid>div:first-child{grid-column:auto}}
 </style>
@@ -450,6 +486,7 @@ nav button[data-tab=reg]{--ic:var(--i-book)}
       <div><label for="r-site">Site</label><select id="r-site"></select></div>
       <div><label for="r-from">From date</label><input type="date" id="r-from"></div>
       <div><label for="r-to">To date</label><input type="date" id="r-to"></div>
+      <div id="r-mon-box" hidden><label for="r-month">Month</label><input type="month" id="r-month"></div>
     </div>
     <div class="chips sm" id="r-range">
       <button data-range="month">This month</button><button data-range="last">Last month</button>
@@ -851,7 +888,8 @@ const REG = {
 };
 const KEY_REG = 'dsr.reg';
 const monthStart = (y, m) => new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10);
-let reg = Object.assign({ site:'', from: today().slice(0, 8) + '01', to:'', view:'sum', range:'month' }, load(KEY_REG, {}));
+let reg = Object.assign({ site:'', from: today().slice(0, 8) + '01', to:'', view:'mon', range:'month', month: today().slice(0, 7) }, load(KEY_REG, {}));
+if (!reg.month) reg.month = today().slice(0, 7);
 const T = v => String(v ?? '').trim();
 if (reg.range) setRange(reg.range);   // "This month" moves on with the calendar
 
@@ -903,6 +941,115 @@ function regTable(view, rows, limit){
   return `<table class="rt"><thead><tr>${R.h.map((h, c) => `<th${numCol[c] ? ' class="n"' : ''}>${h}</th>`).join('')}</tr></thead>
     <tbody>${shown.map((r, i) => `<tr${i < 25 ? ` style="animation-delay:${i * 18}ms"` : ''}>${R.h.map((h, c) => cell(r[c] ?? '', h)).join('')}</tr>`).join('')}</tbody>${foot}</table>`;
 }
+/* ---------- monthly labour attendance: one row per worker, one column per day ---------- */
+const SC = s => String(s).replace(/^[A-Za-z]+[\s-]*/, '') || String(s);   // AT014 -> 014
+const MSUM_H = ['Site','Reports','Company workers','Company man-days','Absent days','Sub-contractor man-days','Total man-days'];
+const p2 = n => String(n).padStart(2, '0');
+function monthData(){
+  const ym = reg.month || today().slice(0, 7), y = +ym.slice(0, 4), m = +ym.slice(5, 7), nd = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const days = Array.from({ length: nd }, (_, i) => { const wd = new Date(Date.UTC(y, m - 1, i + 1)).getUTCDay();
+    return { n: i + 1, wd: ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][wd], off: wd === 5 }; });
+  const list = reports.filter(r => String(r.date).slice(0, 7) === ym && (!reg.site || T(r.site) === reg.site))
+    .sort((a, b) => a.date.localeCompare(b.date) || T(a.site).localeCompare(T(b.site)));
+  const W = {}, S = {}, sites = {};
+  list.forEach(r => {
+    const di = +r.date.slice(8, 10) - 1, s = T(r.site) || '?';
+    const st = sites[s] || (sites[s] = { reports: 0, workers: new Set(), p: 0, a: 0, sub: 0 }); st.reports++;
+    (r.co || []).forEach(x => { if (x.v !== 2 || !T(x.name)) return;
+      const k = T(x.name).toUpperCase(), ab = T(x.status) === 'Absent';
+      const w = W[k] || (W[k] = { name: T(x.name), trade: '', cells: Array(nd).fill(null) });
+      if (T(x.trade)) w.trade = T(x.trade);
+      const c = w.cells[di];
+      if (!c || (c.ab && !ab)) w.cells[di] = { s, ab };
+      else if (!ab && !c.ab && c.s !== s) c.also = s;
+      if (ab) st.a++; else { st.p++; st.workers.add(k); } });
+    (r.sub || []).forEach(x => { const n = num(x.skilled) + num(x.unskilled); if (!n) return;
+      const nm = T(x.name) || 'Sub-contractor', k = nm.toUpperCase() + '|' + s;
+      const t = S[k] || (S[k] = { name: nm, site: s, cells: Array(nd).fill(0), total: 0 });
+      t.cells[di] += n; t.total += n; st.sub += n; });
+  });
+  const workers = Object.values(W).map(w => {
+    const by = {}; w.cells.forEach(c => { if (c && !c.ab) by[c.s] = (by[c.s] || 0) + 1; });
+    w.p = w.cells.filter(c => c && !c.ab).length; w.a = w.cells.filter(c => c && c.ab).length;
+    const top = Object.entries(by).sort((a, b) => b[1] - a[1]);
+    w.main = top.length ? top[0][0] : (w.cells.find(Boolean) || {}).s || '';
+    w.sites = top.map(([s, n]) => `${s} (${n})`).join(', ');
+    return w; }).sort((a, b) => a.main.localeCompare(b.main) || a.name.localeCompare(b.name));
+  const subs = Object.values(S).sort((a, b) => a.site.localeCompare(b.site) || a.name.localeCompare(b.name));
+  const summary = Object.keys(sites).sort().map(s => { const v = sites[s]; return [s, v.reports, v.workers.size, v.p, v.a, v.sub, v.p + v.sub]; });
+  const label = new Date(Date.UTC(y, m - 1, 1)).toLocaleString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  return { ym, nd, days, list, workers, subs, summary, label, work: days.filter(d => !d.off).length,
+    start: `01.${p2(m)}.${y}`, end: `${p2(nd)}.${p2(m)}.${y}` };
+}
+const sumOf = a => a.reduce((t, n) => t + n, 0);
+function monthHTML(d){
+  const q = $('r-q').value.toLowerCase();
+  const ws = d.workers.filter(w => !q || (w.name + ' ' + w.trade + ' ' + w.sites).toLowerCase().includes(q));
+  const subs = d.subs.filter(x => !q || (x.name + ' ' + x.site).toLowerCase().includes(q));
+  const perDay = d.days.map((_, i) => ws.filter(w => w.cells[i] && !w.cells[i].ab).length);
+  const subDay = d.days.map((_, i) => sumOf(subs.map(x => x.cells[i])));
+  const blank = i => `<td${d.days[i].off ? ' class="off"' : ''}></td>`;
+  const wcells = w => w.cells.map((c, i) => !c ? blank(i) : c.ab ? `<td class="ab" title="Absent – ${esc(c.s)}">A</td>`
+    : `<td class="pr" title="Present at ${esc(c.s)}${c.also ? ' and ' + esc(c.also) : ''}">${esc(SC(c.s))}${c.also ? '+' : ''}</td>`).join('');
+  const cols = d.nd + 6, tot = d.summary.reduce((t, r) => t.map((v, i) => i ? v + r[i] : v), ['Total', 0, 0, 0, 0, 0, 0]);
+  tot[2] = new Set(d.workers.filter(w => w.p).map(w => w.name.toUpperCase())).size;
+  return `<div class="ma">
+  <div class="ma-head"><img src="${LOGO}" alt=""><div><h1>MONTHLY LABOUR ATTENDANCE</h1><small>AL TARWI BUILDING CONTRACTING</small></div></div>
+  <div class="ma-info"><div><b>Month</b>${esc(d.label)}</div><div><b>Site</b>${esc(reg.site || 'All sites')}</div><div><b>Start date</b>${d.start}</div>
+    <div><b>End date</b>${d.end}</div><div><b>Working days</b>${d.work}</div><div><b>Reports</b>${d.list.length}</div></div>
+  <div class="ma-leg"><span><i style="background:#d5f0e1">Present</i><i style="background:#c2e8d3;color:#17734a">014</i></span>
+    <span><i style="background:#f8d0cb">Absent</i><i style="background:#f3b9b1;color:#b8321f">A</i></span>
+    <span><i style="background:#dfe9fb">Sub-contractor</i><i style="background:#cbdcf7;color:#1d64c4">men</i></span>
+    <span><i style="background:#e6e9ef">Friday</i><i style="background:#d6dae2"></i></span><span><i>Blank</i><i style="font-weight:400">no report</i></span></div>
+  <p class="ma-note">The number in a green cell is the site where the worker worked that day (014 = AT014). "+" means two sites on the same day.</p>
+  <div class="ma-wrap"><table><thead><tr><th rowspan="2">No</th><th rowspan="2" class="nm">Name of worker</th><th rowspan="2">Trade</th>
+    ${d.days.map(x => `<th${x.off ? ' class="off"' : ''}>${p2(x.n)}</th>`).join('')}<th rowspan="2">Present<br>days</th><th rowspan="2">Absent<br>days</th><th rowspan="2">Sites worked (days)</th></tr>
+    <tr>${d.days.map(x => `<th${x.off ? ' class="off"' : ''}>${x.wd}</th>`).join('')}</tr></thead><tbody>
+  ${ws.length ? ws.map((w, i) => `<tr><td>${i + 1}</td><td class="nm">${esc(w.name)}</td><td class="tr">${esc(w.trade)}</td>${wcells(w)}<td class="tp">${w.p}</td><td class="ta">${w.a}</td><td class="st">${esc(w.sites)}</td></tr>`).join('')
+    : `<tr><td colspan="${cols}" class="none">No company workers in the reports for this month${reg.site ? ' and site' : ''}.</td></tr>`}
+  <tr class="tot"><td></td><td class="nm">Company present each day</td><td></td>${perDay.map(n => `<td>${n || ''}</td>`).join('')}<td>${sumOf(ws.map(w => w.p))}</td><td>${sumOf(ws.map(w => w.a))}</td><td></td></tr>
+  ${subs.length ? `<tr class="sec"><td colspan="${cols}">SUB-CONTRACTOR LABOUR (AL REDA AND OTHERS) – NUMBER OF MEN EACH DAY</td></tr>`
+    + subs.map((x, i) => `<tr><td>${i + 1}</td><td class="nm">${esc(x.name)}</td><td class="tr">${esc(x.site)}</td>${x.cells.map((n, j) => n ? `<td class="sb">${n}</td>` : blank(j)).join('')}<td class="tp" colspan="2">${x.total}</td><td class="st">man-days</td></tr>`).join('')
+    + `<tr class="tot"><td></td><td class="nm">Sub-contractor men each day</td><td></td>${subDay.map(n => `<td>${n || ''}</td>`).join('')}<td colspan="2">${sumOf(subDay)}</td><td></td></tr>` : ''}
+  </tbody></table></div>
+  <h3>SITE-WISE SUMMARY – ${esc(d.label.toUpperCase())}</h3>
+  <div class="ma-wrap"><table class="ma-sum"><thead><tr>${MSUM_H.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>
+  ${d.summary.length ? d.summary.map(r => `<tr>${r.map(v => `<td>${esc(v)}</td>`).join('')}</tr>`).join('') + `<tr class="tot">${tot.map(v => `<td>${v}</td>`).join('')}</tr>`
+    : `<tr><td colspan="7" class="none">No reports for this month.</td></tr>`}</tbody></table></div>
+  <div class="sig"><div>Prepared by (Site Engineer)</div><div>Checked by (Project Manager)</div><div>Approved by</div></div>
+  </div>`;
+}
+/* Excel sheet for the monthly grid, coloured like the app */
+function monthSheet(d, X, col){
+  const R = [], sp = sumOf(d.workers.map(w => w.p)), sa = sumOf(d.workers.map(w => w.a));
+  const blank = j => ['', d.days[j].off ? 8 : 10];
+  R.push([['AL TARWI BUILDING CONTRACTING - MONTHLY LABOUR ATTENDANCE', 1]]);
+  R.push([[`Month: ${d.label}     Site: ${reg.site || 'All sites'}     ${d.start} to ${d.end}     Working days: ${d.work}     Reports: ${d.list.length}`, 2]]);
+  R.push([['Green = present (the number is the site, 014 = AT014)  ·  Red A = absent  ·  Blue = sub-contractor men  ·  Grey = Friday  ·  Blank = no report', 2]]);
+  R.push([]);
+  R.push([['No', 9], ['Name of worker', 9], ['Trade', 9], ...d.days.map(x => [x.n, x.off ? 12 : 9]), ['Present days', 9], ['Absent days', 9], ['Sites worked (days)', 9]]);
+  R.push([['', 9], ['', 9], ['', 9], ...d.days.map(x => [x.wd, x.off ? 12 : 9]), ['', 9], ['', 9], ['', 9]]);
+  d.workers.forEach((w, i) => R.push([[i + 1, 10], [w.name, 4], [w.trade, 4],
+    ...w.cells.map((c, j) => !c ? blank(j) : c.ab ? ['A', 7] : [SC(c.s) + (c.also ? '+' : ''), 6]), [w.p, 11], [w.a, 11], [w.sites, 4]]));
+  R.push([['', 11], ['Company present each day', 14], ['', 11], ...d.days.map((_, i) => [d.workers.filter(w => w.cells[i] && !w.cells[i].ab).length, 11]), [sp, 11], [sa, 11], ['', 11]]);
+  if (d.subs.length) {
+    const sd = d.days.map((_, i) => sumOf(d.subs.map(x => x.cells[i])));
+    R.push([]); R.push([['SUB-CONTRACTOR LABOUR (AL REDA AND OTHERS) - NUMBER OF MEN EACH DAY', 14]]);
+    d.subs.forEach((x, i) => R.push([[i + 1, 10], [x.name, 4], [x.site, 4], ...x.cells.map((n, j) => n ? [n, 13] : blank(j)), [x.total, 11], ['', 10], ['man-days', 4]]));
+    R.push([['', 11], ['Sub-contractor men each day', 14], ['', 11], ...sd.map(n => [n, 11]), [sumOf(sd), 11], ['', 11], ['', 11]]);
+  }
+  R.push([]); R.push([]);
+  R.push([['', 0], ['Prepared by (Site Engineer)', 2], ['', 0], ...d.days.map((_, j) => j === 10 ? ['Checked by (Project Manager)', 2] : j === 22 ? ['Approved by', 2] : null)]);
+  const w = [5, 26, 13, ...d.days.map(() => 5.3), 9, 9, 26];
+  const cx = (c, ref) => !c ? '' : typeof c[0] === 'number' ? `<c r="${ref}" s="${c[1]}"><v>${c[0]}</v></c>`
+    : c[0] === '' ? `<c r="${ref}" s="${c[1]}"/>` : `<c r="${ref}" t="inlineStr" s="${c[1]}"><is><t xml:space="preserve">${X(c[0])}</t></is></c>`;
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>'
+    + '<sheetViews><sheetView workbookViewId="0"><pane xSplit="3" ySplit="6" topLeftCell="D7" activePane="bottomRight" state="frozen"/></sheetView></sheetViews><cols>'
+    + w.map((v, c) => `<col min="${c + 1}" max="${c + 1}" width="${v}" customWidth="1"/>`).join('') + '</cols><sheetData>'
+    + R.map((row, ri) => row.length ? `<row r="${ri + 1}">` + row.map((c, ci) => cx(c, col(ci + 1) + (ri + 1))).join('') + '</row>' : '').join('')
+    + '</sheetData><pageMargins left="0.25" right="0.25" top="0.4" bottom="0.4" header="0.2" footer="0.2"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/></worksheet>';
+}
+
 function setRange(k){
   const t = today(), y = +t.slice(0, 4), m = +t.slice(5, 7) - 1;
   if (k === 'month') { reg.from = monthStart(y, m); reg.to = ''; }
@@ -918,8 +1065,21 @@ function renderReg(){
   $('r-site').innerHTML = '<option value="">All sites</option>' + sites.map(s => `<option${s === reg.site ? ' selected' : ''}>${esc(s)}</option>`).join('');
   $('r-from').value = reg.from; $('r-to').value = reg.to;
   document.querySelectorAll('#r-range button').forEach(b => b.classList.toggle('on', b.dataset.range === reg.range));
-  const list = regReports(), data = regRows(list);
-  $('r-tabs').innerHTML = Object.keys(REG).map(k => `<button data-reg="${k}" class="${k === reg.view ? 'on' : ''}">${REG[k].t} <small>${data[k].length}</small></button>`).join('');
+  const list = regReports(), data = regRows(list), mon = reg.view === 'mon', md = monthData();
+  $('r-from').parentNode.hidden = $('r-to').parentNode.hidden = $('r-range').hidden = mon;
+  $('r-mon-box').hidden = !mon; $('r-month').value = reg.month;
+  $('r-tabs').innerHTML = `<button data-reg="mon" class="${mon ? 'on' : ''}">Monthly Attendance <small>${md.workers.length}</small></button>`
+    + Object.keys(REG).map(k => `<button data-reg="${k}" class="${k === reg.view ? 'on' : ''}">${REG[k].t} <small>${data[k].length}</small></button>`).join('');
+  $('r-table').classList.toggle('mon', mon);
+  if (mon) {
+    const sd = sumOf(md.subs.map(x => x.total));
+    $('r-kpi').innerHTML = [[md.workers.length, 'company workers'], [sumOf(md.workers.map(w => w.p)), 'company man-days'],
+      [sumOf(md.workers.map(w => w.a)), 'absent days'], [sd, 'sub-contractor man-days']].map(([v, l]) => `<div class="kpi"><b>${v}</b><small>${l}</small></div>`).join('');
+    $('r-title').textContent = 'Monthly Attendance – ' + md.label;
+    $('t-reg').textContent = md.workers.length + ' workers';
+    $('r-table').innerHTML = monthHTML(md);
+    keep(KEY_REG, reg); return;
+  }
   const men = data.sum.reduce((t, r) => t + r[9], 0), days = new Set(list.map(r => r.date)).size;
   const kpi = [[list.length, 'reports'], [days ? Math.round(men / days) : 0, 'average labour / day'], [data.work.length, 'work items'],
     [data.mat.filter(r => r[2] === 'Received').length + ' / ' + data.mat.filter(r => r[2] !== 'Received').length, 'materials in / out']];
@@ -935,10 +1095,13 @@ $('r-site').onchange = e => { reg.site = e.target.value; renderReg(); };
 $('r-from').onchange = e => { reg.from = e.target.value; reg.range = ''; renderReg(); };
 $('r-to').onchange = e => { reg.to = e.target.value; reg.range = ''; renderReg(); };
 $('r-q').oninput = () => renderReg();
+$('r-month').onchange = e => { if (e.target.value) { reg.month = e.target.value; renderReg(); } };
 $('r-range').onclick = e => { const b = e.target.closest('[data-range]'); if (b) { setRange(b.dataset.range); renderReg(); } };
 $('r-tabs').onclick = e => { const b = e.target.closest('[data-reg]'); if (!b) return; reg.view = b.dataset.reg; $('r-q').value = ''; renderReg();
   b.scrollIntoView && document.querySelector(`#r-tabs [data-reg="${reg.view}"]`).scrollIntoView({ inline:'center', block:'nearest', behavior:'smooth' }); };
-const regName = () => `DSR Registers ${reg.site || 'All sites'} ${reg.from ? fmtDate(reg.from) : 'start'} to ${fmtDate(reg.to || today())}.xlsx`;
+const regName = () => reg.view === 'mon' ? `Labour Attendance ${reg.site || 'All sites'} ${monthData().label}.xlsx`
+  : `DSR Registers ${reg.site || 'All sites'} ${reg.from ? fmtDate(reg.from) : 'start'} to ${fmtDate(reg.to || today())}.xlsx`;
+const regEmpty = () => reg.view === 'mon' ? !monthData().list.length : !regReports().length;
 const regLabel = () => `${reg.site || 'All sites'} · ${reg.from ? fmtDate(reg.from) : 'all dates'} to ${fmtDate(reg.to || today())}`;
 
 /* real .xlsx, written in the phone (zip without compression) */
@@ -964,27 +1127,30 @@ function regXlsx(){
   const data = regRows(regReports()), X = s => esc(s).replace(/'/g, '&apos;');
   const col = n => { let s = ''; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = (n - m - 1) / 26; } return s; };
   const stamp = 'Made ' + fmtDate(today()) + ' from the Daily Site Report app · ' + regLabel();
-  const sheet = (title, head, rows) => {
+  const sheet = (title, head, rows, note) => {
     const w = head.map((h, c) => Math.min(60, Math.max(String(h).length, ...rows.map(r => String(r[c] ?? '').length)) + 3));
     let x = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>'
       + w.map((v, c) => `<col min="${c + 1}" max="${c + 1}" width="${v}" customWidth="1"/>`).join('') + '</cols><sheetData>'
       + `<row r="1"><c r="A1" t="inlineStr" s="1"><is><t>${X('AL TARWI BUILDING CONTRACTING - ' + title)}</t></is></c></row>`
-      + `<row r="2"><c r="A2" t="inlineStr" s="2"><is><t>${X(stamp)}</t></is></c></row>`
+      + `<row r="2"><c r="A2" t="inlineStr" s="2"><is><t>${X(note || stamp)}</t></is></c></row>`
       + '<row r="4">' + head.map((h, c) => `<c r="${col(c + 1)}4" t="inlineStr" s="3"><is><t>${X(h)}</t></is></c>`).join('') + '</row>';
     const body = rows.length ? rows : [['No entries']]; let rn = 4;
     body.forEach(r => { rn++; x += `<row r="${rn}">` + head.map((_, c) => { const v = r[c] ?? '', ref = col(c + 1) + rn;
       return typeof v === 'number' ? `<c r="${ref}" s="5"><v>${v}</v></c>` : `<c r="${ref}" t="inlineStr" s="4"><is><t xml:space="preserve">${X(v)}</t></is></c>`; }).join('') + '</row>'; });
     return x + `</sheetData><autoFilter ref="A4:${col(head.length)}${rn}"/><pageSetup orientation="landscape"/></worksheet>`;
   };
-  const keys = Object.keys(REG), files = [];
-  const styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="4"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="14"/><color rgb="FF0B2A5B"/><name val="Calibri"/></font><font><i/><sz val="10"/><color rgb="FF5D6A7E"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF0B2A5B"/></patternFill></fill></fills><borders count="2"><border/><border><left style="thin"><color rgb="FFCFD8E6"/></left><right style="thin"><color rgb="FFCFD8E6"/></right><top style="thin"><color rgb="FFCFD8E6"/></top><bottom style="thin"><color rgb="FFCFD8E6"/></bottom></border></borders><cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="6"><xf/><xf fontId="1" applyFont="1"/><xf fontId="2" applyFont="1"/><xf fontId="3" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1"/><xf borderId="1" applyBorder="1"><alignment vertical="top" wrapText="1"/></xf><xf borderId="1" applyBorder="1"/></cellXfs></styleSheet>';
+  const md = monthData(), files = [];
+  const list = [['Monthly Attendance', monthSheet(md, X, col)],
+    ['Month Site Summary', sheet('SITE-WISE LABOUR SUMMARY - ' + md.label.toUpperCase(), MSUM_H, md.summary, `${md.label} · ${reg.site || 'All sites'} · company man-days = days present, sub-contractor man-days = men × days`)],
+    ...Object.keys(REG).map(k => [REG[k].t, sheet(REG[k].title, REG[k].h, data[k])])];
+  const styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="8"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="14"/><color rgb="FF0B2A5B"/><name val="Calibri"/></font><font><i/><sz val="10"/><color rgb="FF5D6A7E"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font><font><sz val="9"/><name val="Calibri"/></font><font><b/><sz val="10"/><color rgb="FF0B2A5B"/><name val="Calibri"/></font><font><b/><sz val="9"/><color rgb="FF17734A"/><name val="Calibri"/></font><font><b/><sz val="9"/><color rgb="FFB8321F"/><name val="Calibri"/></font></fonts><fills count="9"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF0B2A5B"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFD5F0E1"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF8D0CB"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE6E9EF"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE3EAF5"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFDFE9FB"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FF5D6A7E"/></patternFill></fill></fills><borders count="2"><border/><border><left style="thin"><color rgb="FFCFD8E6"/></left><right style="thin"><color rgb="FFCFD8E6"/></right><top style="thin"><color rgb="FFCFD8E6"/></top><bottom style="thin"><color rgb="FFCFD8E6"/></bottom></border></borders><cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="15"><xf/><xf fontId="1" applyFont="1"/><xf fontId="2" applyFont="1"/><xf fontId="3" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1"/><xf borderId="1" applyBorder="1"><alignment vertical="top" wrapText="1"/></xf><xf borderId="1" applyBorder="1"/><xf fontId="6" fillId="3" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf fontId="7" fillId="4" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf fillId="5" borderId="1" applyFill="1" applyBorder="1"/><xf fontId="3" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf fontId="4" borderId="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf fontId="5" fillId="6" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf fontId="3" fillId="8" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf fontId="5" fillId="7" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf fontId="5" fillId="6" borderId="1" applyFont="1" applyFill="1" applyBorder="1"/></cellXfs></styleSheet>';
   let ct = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>';
   let wb = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>';
   let rel = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
-  keys.forEach((k, i) => { const n = i + 1;
-    files.push([`xl/worksheets/sheet${n}.xml`, sheet(REG[k].title, REG[k].h, data[k])]);
+  list.forEach(([name, xml], i) => { const n = i + 1;
+    files.push([`xl/worksheets/sheet${n}.xml`, xml]);
     ct += `<Override PartName="/xl/worksheets/sheet${n}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`;
-    wb += `<sheet name="${X(REG[k].t)}" sheetId="${n}" r:id="rId${n}"/>`;
+    wb += `<sheet name="${X(name)}" sheetId="${n}" r:id="rId${n}"/>`;
     rel += `<Relationship Id="rId${n}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${n}.xml"/>`; });
   files.push(['[Content_Types].xml', ct + '</Types>'],
     ['_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'],
@@ -994,21 +1160,28 @@ function regXlsx(){
   return zipBlob(files, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 }
 $('r-xls').onclick = () => {
-  if (!regReports().length) { toast('No saved reports for this site and dates'); return; }
+  if (regEmpty()) { toast('No saved reports for this site and dates'); return; }
   const a = document.createElement('a'); a.href = URL.createObjectURL(regXlsx()); a.download = regName();
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-  toast('Excel downloaded – 7 registers in one file');
+  toast('Excel downloaded – monthly attendance and all registers in one file');
 };
 if (window.File && navigator.canShare && navigator.canShare({ files: [new File(['x'], 'x.xlsx', { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })] })) {
   $('r-share').hidden = false;
   $('r-share').onclick = () => {
-    if (!regReports().length) { toast('No saved reports for this site and dates'); return; }
+    if (regEmpty()) { toast('No saved reports for this site and dates'); return; }
     const f = new File([regXlsx()], regName(), { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     navigator.share({ files:[f], title: regName() }).catch(() => {});
   };
 }
 /* print / PDF: the register on screen, A4 landscape */
 $('r-print').onclick = () => {
+  if (reg.view === 'mon') {
+    $('sheet').innerHTML = `<style>@page{size:A4 landscape;margin:7mm}#sheet .ma{font-size:7.5pt;border-radius:0}#sheet .ma table{font-size:6.4pt}
+      #sheet .ma th,#sheet .ma td{padding:2px 1px}#sheet .ma-wrap{overflow:visible;border-radius:4px}#sheet .ma tr{break-inside:avoid}
+      #sheet .ma-head{padding:6px 10px}#sheet .ma-head img{height:11mm}#sheet .ma-head h1{font-size:14pt}#sheet .ma-info{margin:6px 0}
+      #sheet .ma-sum{font-size:8pt!important;width:auto;min-width:60%}#sheet .ma h3{break-after:avoid}</style>${monthHTML(monthData())}`;
+    setTimeout(() => print(), 200); return;
+  }
   const data = regRows(regReports()), q = $('r-q').value.toLowerCase(), rows = data[reg.view].filter(r => !q || r.join(' ').toLowerCase().includes(q));
   $('sheet').innerHTML = `<style>@page{size:A4 landscape;margin:9mm}.p-card td.n,.p-card th.n{text-align:right}.p-card tfoot td{font-weight:700;background:#e3eaf5}</style>
     <div class="p-head"><img src="${LOGO}" alt=""><div><h1>${REG[reg.view].title}</h1><div class="sub">AL TARWI BUILDING CONTRACTING · ${esc(regLabel())}</div></div></div>
