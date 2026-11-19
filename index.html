@@ -408,6 +408,48 @@ nav button[data-tab=reg]{--ic:var(--i-book)}
 .ma-sum td:first-child{font-weight:700;text-align:left;padding-inline:8px}
 .ma .sig{display:flex;justify-content:space-between;margin:34px 0 6px;gap:24px}
 .ma .sig div{flex:1;border-top:1px solid #18212f;padding-top:4px;text-align:center;font-size:11px;font-weight:600}
+/* stock: site toggle, balance cards, daily groups */
+.seg{display:flex;gap:4px;padding:4px;background:var(--pill);border-radius:14px;overflow-x:auto;scrollbar-width:none;margin:6px 0 14px}
+.seg::-webkit-scrollbar{display:none}
+.seg button{flex:1 0 auto;border:0;background:none;color:var(--muted);padding:9px 16px;border-radius:10px;font:700 13.5px var(--f-body);letter-spacing:.03em;cursor:pointer;transition:background .35s var(--ease),color .35s,box-shadow .35s,transform .2s}
+.seg button:active{transform:scale(.96)}
+.seg button.on{background:var(--card);color:var(--blue);box-shadow:0 4px 14px -6px #0b2a5b66}
+.stk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:12px;padding-bottom:14px}
+.stk{position:relative;overflow:hidden;border:1px solid color-mix(in srgb,var(--line) 60%,transparent);border-radius:16px;padding:14px 14px 12px 18px;
+  background:linear-gradient(160deg,var(--card),color-mix(in srgb,var(--band) 50%,var(--card)));box-shadow:var(--shadow);animation:rowIn .5s var(--ease) both;transition:transform .3s var(--ease),box-shadow .3s}
+.stk:hover{transform:translateY(-3px);box-shadow:var(--shadow-up,var(--shadow))}
+.stk::before{content:"";position:absolute;inset:0 auto 0 0;width:5px;background:linear-gradient(#17a35c,#38c7a5)}
+.stk.low::before{background:linear-gradient(#e0604c,#f5a524)}
+.stk-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.stk-top b{font:700 13px var(--f-display);letter-spacing:.04em}
+.stk-top span{font:600 11px var(--f-body);background:var(--pill);color:var(--blue);padding:2px 9px;border-radius:999px;flex:none}
+.stk-big{font:700 31px var(--f-display);margin:10px 0 8px;line-height:1;font-variant-numeric:tabular-nums}
+.stk-big small{font:600 12px var(--f-body);color:var(--muted);margin-left:6px}
+.stk-bar{height:7px;border-radius:9px;background:color-mix(in srgb,var(--line) 70%,transparent);overflow:hidden}
+.stk-bar i{display:block;height:100%;width:var(--p);border-radius:9px;background:linear-gradient(90deg,#17a35c,#38c7a5);animation:grow 1.1s var(--ease) both .15s}
+.stk.low .stk-bar i{background:linear-gradient(90deg,#e0604c,#f5a524)}
+@keyframes grow{from{width:0}}
+.stk-mv{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:11px;font-weight:700;font-size:14px;font-variant-numeric:tabular-nums}
+.stk-mv small{display:block;font:500 10.5px var(--f-body);color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:1px}
+.stk-mv .in{color:var(--ok)}.stk-mv .out{color:var(--danger)}
+.stk-as{margin-top:9px;font-size:11px;color:var(--muted)}
+.stk.low .stk-as{color:var(--danger);font-weight:600}
+.stk-day{border:1px solid color-mix(in srgb,var(--line) 60%,transparent);border-radius:14px;margin-bottom:10px;overflow:hidden;background:var(--card);box-shadow:var(--shadow);animation:rowIn .45s var(--ease) both}
+.stk-day summary{list-style:none;cursor:pointer;display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:12px 14px}
+.stk-day summary::-webkit-details-marker{display:none}
+.stk-day summary b{font:700 14.5px var(--f-display);letter-spacing:.03em}
+.stk-day summary span{font-size:12px;color:var(--muted)}
+.stk-day summary em{font-style:normal}
+.stk-day summary::after{content:"";margin-left:auto;width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg) translateY(-2px);transition:transform .35s var(--ease)}
+.stk-day[open] summary::after{transform:rotate(-135deg)}
+.stk-day[open] summary{border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--band) 45%,transparent)}
+.stk-tw{overflow-x:auto}
+.stk-day .rt{min-width:0}
+.stk-day .rt th,.stk-day .rt td{padding:8px 8px}
+.stk-day .rt td:first-child{white-space:normal}
+.stk-day .rt small.u{display:block;font-size:10.5px;color:var(--muted);font-weight:500;letter-spacing:.03em}
+.stk-day .rt tbody tr{animation:none}
+.rt td.in{color:var(--ok);font-weight:700}.rt td.out{color:var(--danger);font-weight:700}.rt td.cl{font-weight:700;color:var(--blue)}
 #tab-reg .grid{grid-template-columns:1fr 1fr}#tab-reg .grid>div:first-child{grid-column:1/-1}
 @media (min-width:700px){#tab-reg .grid{grid-template-columns:2fr 1fr 1fr}#tab-reg .grid>div:first-child{grid-column:auto}}
 </style>
@@ -1050,6 +1092,35 @@ function monthSheet(d, X, col){
     + '</sheetData><pageMargins left="0.25" right="0.25" top="0.4" bottom="0.4" header="0.2" footer="0.2"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/></worksheet>';
 }
 
+/* ---------- stock: one site at a time ---------- */
+const STK_VIEWS = ['stock', 'bal'];
+const fq = n => +(+n || 0).toFixed(3);
+function stockCards(rows){        // rows: [date, site, mat, unit, open, recd, issue, close], oldest first
+  const by = {};
+  rows.forEach(r => { const k = r[2].toUpperCase();
+    const m = by[k] || (by[k] = { mat: r[2], unit: r[3], open: r[4], recd: 0, issue: 0, close: 0, date: '' });
+    m.recd += r[5]; m.issue += r[6]; m.close = r[7]; m.date = r[0]; if (r[3]) m.unit = r[3]; });
+  return '<div class="stk-grid">' + Object.values(by).map((m, i) => {
+    const avail = m.open + m.recd, pct = avail > 0 ? Math.max(0, Math.min(100, m.close / avail * 100)) : (m.close > 0 ? 100 : 0), low = m.close <= 0 || pct < 20;
+    return `<div class="stk${low ? ' low' : ''}" style="--p:${pct.toFixed(0)}%;animation-delay:${Math.min(i, 12) * 45}ms">
+      <div class="stk-top"><b>${esc(m.mat)}</b>${m.unit ? `<span>${esc(m.unit)}</span>` : ''}</div>
+      <div class="stk-big">${fq(m.close)}<small>${esc(m.unit || '')}</small></div>
+      <div class="stk-bar" title="${pct.toFixed(0)}% of opening + received is left"><i></i></div>
+      <div class="stk-mv"><div><small>Opening</small>${fq(m.open)}</div><div class="${m.recd ? 'in' : ''}"><small>Received</small>${m.recd ? '+' + fq(m.recd) : 0}</div><div class="${m.issue ? 'out' : ''}"><small>Issued</small>${m.issue ? '−' + fq(m.issue) : 0}</div></div>
+      <div class="stk-as">Closing as on ${esc(m.date)}${m.close <= 0 ? ' · out of stock' : low ? ' · low stock' : ''}</div></div>`;
+  }).join('') + '</div>';
+}
+function stockDays(rows){
+  const dates = [...new Set(rows.map(r => r[0]))].reverse();   // latest day first
+  return dates.map((d, i) => { const day = rows.filter(r => r[0] === d);
+    const rc = day.filter(r => r[5]).length, is = day.filter(r => r[6]).length;
+    return `<details class="stk-day"${i < 2 ? ' open' : ''} style="animation-delay:${Math.min(i, 10) * 50}ms"><summary><b>${esc(d)}</b><span>${day.length} materials</span>
+      ${rc ? `<em class="bdg in">${rc} received</em>` : ''}${is ? `<em class="bdg out">${is} issued</em>` : ''}</summary>
+      <div class="stk-tw"><table class="rt"><thead><tr><th>Material</th><th class="n">Opening</th><th class="n">Recd</th><th class="n">Issued</th><th class="n">Closing</th></tr></thead><tbody>
+      ${day.map(r => `<tr><td><b>${esc(r[2])}</b>${r[3] ? `<small class="u">${esc(r[3])}</small>` : ''}</td><td class="n">${fq(r[4])}</td><td class="n${r[5] ? ' in' : ''}">${r[5] ? '+' + fq(r[5]) : '–'}</td><td class="n${r[6] ? ' out' : ''}">${r[6] ? '−' + fq(r[6]) : '–'}</td><td class="n cl">${fq(r[7])}</td></tr>`).join('')}
+      </tbody></table></div></details>`; }).join('');
+}
+
 function setRange(k){
   const t = today(), y = +t.slice(0, 4), m = +t.slice(5, 7) - 1;
   if (k === 'month') { reg.from = monthStart(y, m); reg.to = ''; }
@@ -1070,7 +1141,7 @@ function renderReg(){
   $('r-mon-box').hidden = !mon; $('r-month').value = reg.month;
   $('r-tabs').innerHTML = `<button data-reg="mon" class="${mon ? 'on' : ''}">Monthly Attendance <small>${md.workers.length}</small></button>`
     + Object.keys(REG).map(k => `<button data-reg="${k}" class="${k === reg.view ? 'on' : ''}">${REG[k].t} <small>${data[k].length}</small></button>`).join('');
-  $('r-table').classList.toggle('mon', mon);
+  $('r-table').classList.toggle('mon', mon || STK_VIEWS.includes(reg.view));
   if (mon) {
     const sd = sumOf(md.subs.map(x => x.total));
     $('r-kpi').innerHTML = [[md.workers.length, 'company workers'], [sumOf(md.workers.map(w => w.p)), 'company man-days'],
@@ -1085,6 +1156,17 @@ function renderReg(){
     [data.mat.filter(r => r[2] === 'Received').length + ' / ' + data.mat.filter(r => r[2] !== 'Received').length, 'materials in / out']];
   $('r-kpi').innerHTML = kpi.map(([v, l]) => `<div class="kpi"><b>${v}</b><small>${l}</small></div>`).join('');
   const q = $('r-q').value.toLowerCase(), rows = data[reg.view].filter(r => !q || r.join(' ').toLowerCase().includes(q));
+  if (STK_VIEWS.includes(reg.view)) {
+    const sites = [...new Set(data.stock.map(r => r[1]))].sort();
+    if (!sites.includes(reg.stkSite)) reg.stkSite = sites[0] || '';
+    const s = reg.stkSite, mine = data.stock.filter(r => r[1] === s && (!q || r.join(' ').toLowerCase().includes(q)));
+    $('r-title').textContent = REG[reg.view].t + (s ? ' – ' + s : '');
+    $('t-reg').textContent = sites.length ? (reg.view === 'bal' ? new Set(mine.map(r => r[2].toUpperCase())).size + ' materials' : (n => n + (n === 1 ? ' day' : ' days'))(new Set(mine.map(r => r[0])).size)) : '';
+    $('r-table').innerHTML = !sites.length ? `<div class="empty">${list.length ? 'No stock entered in these reports.' : 'No saved reports for this site and dates.'}</div>`
+      : `<div class="seg" role="tablist">${sites.map(x => `<button role="tab" data-stk="${esc(x)}" class="${x === s ? 'on' : ''}">${esc(x)}</button>`).join('')}</div>`
+        + (!mine.length ? '<div class="empty">Nothing matches the search.</div>' : reg.view === 'bal' ? stockCards(mine) : stockDays(mine));
+    keep(KEY_REG, reg); return;
+  }
   $('r-title').textContent = REG[reg.view].t;
   $('t-reg').textContent = rows.length + (rows.length === 1 ? ' line' : ' lines');
   $('r-table').innerHTML = rows.length ? regTable(reg.view, rows, 400) + (rows.length > 400 ? `<div class="empty">Showing the first 400 of ${rows.length} lines – the Excel file has all of them.</div>` : '')
@@ -1095,6 +1177,7 @@ $('r-site').onchange = e => { reg.site = e.target.value; renderReg(); };
 $('r-from').onchange = e => { reg.from = e.target.value; reg.range = ''; renderReg(); };
 $('r-to').onchange = e => { reg.to = e.target.value; reg.range = ''; renderReg(); };
 $('r-q').oninput = () => renderReg();
+$('r-table').addEventListener('click', e => { const b = e.target.closest('[data-stk]'); if (b) { reg.stkSite = b.dataset.stk; renderReg(); } });
 $('r-month').onchange = e => { if (e.target.value) { reg.month = e.target.value; renderReg(); } };
 $('r-range').onclick = e => { const b = e.target.closest('[data-range]'); if (b) { setRange(b.dataset.range); renderReg(); } };
 $('r-tabs').onclick = e => { const b = e.target.closest('[data-reg]'); if (!b) return; reg.view = b.dataset.reg; $('r-q').value = ''; renderReg();
@@ -1182,7 +1265,8 @@ $('r-print').onclick = () => {
       #sheet .ma-sum{font-size:8pt!important;width:auto;min-width:60%}#sheet .ma h3{break-after:avoid}</style>${monthHTML(monthData())}`;
     setTimeout(() => print(), 200); return;
   }
-  const data = regRows(regReports()), q = $('r-q').value.toLowerCase(), rows = data[reg.view].filter(r => !q || r.join(' ').toLowerCase().includes(q));
+  const data = regRows(regReports()), q = $('r-q').value.toLowerCase(), stk = STK_VIEWS.includes(reg.view);
+  const rows = data[reg.view].filter(r => (!q || r.join(' ').toLowerCase().includes(q)) && (!stk || r[reg.view === 'bal' ? 0 : 1] === reg.stkSite));
   $('sheet').innerHTML = `<style>@page{size:A4 landscape;margin:9mm}.p-card td.n,.p-card th.n{text-align:right}.p-card tfoot td{font-weight:700;background:#e3eaf5}</style>
     <div class="p-head"><img src="${LOGO}" alt=""><div><h1>${REG[reg.view].title}</h1><div class="sub">AL TARWI BUILDING CONTRACTING · ${esc(regLabel())}</div></div></div>
     <section class="p-card" style="margin-top:8px;break-inside:auto"><h2>${REG[reg.view].t}<span>${rows.length} lines</span></h2>${rows.length ? regTable(reg.view, rows).replace('class="rt"', '') : '<p style="padding:10px">No entries</p>'}</section>`;
