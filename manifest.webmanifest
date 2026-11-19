@@ -1,7 +1,7 @@
 {
-  "name": "Al Tarwi Daily Site Report",
-  "short_name": "Site Report",
-  "description": "Daily Site Report for Al Tarwi Building Contracting",
+  "name": "Al Tarwi",
+  "short_name": "Al Tarwi",
+  "description": "Al Tarwi Building Contracting apps: Daily Site Report and more",
   "id": "./",
   "start_url": "./",
   "scope": "./",
