@@ -495,8 +495,9 @@ body.at-exp{overflow:hidden}body.at-exp .bar{display:none!important}
 .x-bal small{color:#dbe6f7;font-size:12.5px;letter-spacing:.04em}
 .x-bal b{display:block;font:800 34px var(--f-display);margin:6px 0 10px;font-variant-numeric:tabular-nums}
 .x-bal b span{font-size:15px;font-weight:600;opacity:.8;margin-right:6px}
-.x-bal .row{display:flex;gap:18px;font-size:13px;font-weight:600;flex-wrap:wrap}
-.x-bal .row i{font-style:normal;display:block;font-size:11px;color:#c3d2ec;font-weight:500}
+.x-bal .x-row{display:flex;gap:18px;font-size:13px;font-weight:600;flex-wrap:wrap;position:relative;z-index:1}
+.x-bal .x-row i{font-style:normal;display:block;font-size:11px;color:#c3d2ec;font-weight:500}
+.x-nav button::before,.x-nav::before{display:none!important}
 .x-warn{background:#fdecea;color:#a93226;border-radius:12px;padding:10px 12px;font-weight:600;font-size:13px;margin-bottom:12px}
 .x-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
 .x-stats div{background:var(--card);border-radius:16px;padding:12px;box-shadow:var(--shadow);border:1px solid color-mix(in srgb,var(--line) 55%,transparent)}
@@ -550,6 +551,20 @@ body.at-exp{overflow:hidden}body.at-exp .bar{display:none!important}
 .x-dl{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:14px}
 .x-dl dt{color:var(--muted)}.x-dl dd{margin:0;font-weight:600;word-break:break-word}
 .x-big-amt{font:800 32px var(--f-display);margin:4px 0 2px;font-variant-numeric:tabular-nums}
+.x-badge{display:inline-block;min-width:20px;padding:1px 6px;border-radius:999px;background:#f5a524;color:#0b2a5b;font-size:11.5px;font-weight:800;margin-left:4px}
+.x-pendbar{width:100%;display:flex;align-items:center;gap:8px;border:0;border-radius:16px;padding:14px 16px;margin-bottom:6px;background:#fff3d6;color:#8a5a00;font:600 14px var(--f-body);cursor:pointer;text-align:left}
+.x-pendbar b{font:800 20px var(--f-display)}.x-pendbar span{margin-left:auto;background:#8a5a00;color:#fff;border-radius:999px;padding:5px 12px;font-size:12px}
+.x-ap .body{display:grid;gap:10px}
+.x-ap-top{display:flex;gap:10px;justify-content:space-between}.x-ap-top b{display:block;font-size:15px}
+.x-ap-top small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+.x-ap-amt{font:800 19px var(--f-display);white-space:nowrap;color:#0b2a5b}
+.x-ap-btns{display:grid;grid-template-columns:auto 1fr 1fr;gap:8px}.x-ap-btns .btn{width:100%}
+.x-tl{list-style:none;margin:0;padding:0 0 0 18px;border-left:2px solid var(--line)}
+.x-tl li{position:relative;padding:0 0 12px 10px}
+.x-tl li::before{content:"";position:absolute;left:-25px;top:3px;width:12px;height:12px;border-radius:50%;background:var(--blue);box-shadow:0 0 0 3px var(--card)}
+.x-tl li.ok::before{background:var(--ok)}.x-tl li.bad::before{background:var(--danger)}
+.x-tl b{display:block;font-size:13.5px}.x-tl small{color:var(--muted);font-size:12px}
+.x-ch{font-size:12.5px;margin-top:2px}.x-ch s{color:var(--muted)}
 /* stock: site toggle, balance cards, daily groups */
 .seg{display:flex;gap:4px;padding:4px;background:var(--pill);border-radius:14px;overflow-x:auto;scrollbar-width:none;margin:6px 0 14px}
 .seg::-webkit-scrollbar{display:none}
@@ -1680,7 +1695,7 @@ $('home').addEventListener('click', e => {
 });
 $('b-home').onclick = () => { if (history.state === 'app') history.back(); else goHome(); };
 addEventListener('popstate', () => {
-  if (document.body.classList.contains('at-exp') && /form|detail/.test(X.view)) { history.pushState('app', ''); X.f = null; xGo(X.view === 'detail' ? 'list' : 'home'); return; }
+  if (document.body.classList.contains('at-exp') && /form|detail/.test(X.view)) { history.pushState('app', ''); X.f = null; xGo(X.view === 'detail' ? (X.prev === 'appr' ? 'appr' : 'list') : 'home'); return; }
   if (!atHome()) goHome();
 });
 
@@ -1704,7 +1719,7 @@ function openExp(){
   xLoad();
 }
 function xLoad(){
-  return server('expAll', X.pin).then(d => { X.d = d; keep('exp.cache', d); if (X.view !== 'form') xGo(X.view === 'detail' ? 'list' : X.view); })
+  return server('expAll', X.pin).then(d => { X.d = d; keep('exp.cache', d); if (X.view !== 'form') xGo(X.view === 'detail' ? (X.prev === 'appr' ? 'appr' : 'list') : (X.view === 'login' ? 'home' : X.view)); })
     .catch(e => { const m = errText(e);
       if (/PIN/i.test(m)) { X.pin = ''; keep('exp.pin', ''); X.d = null; keep('exp.cache', null); xLogin(m); }
       else if (!X.d) xMain().innerHTML = `<div class="empty">Could not load expenses. ${esc(m)}<br><br><button class="btn" data-xretry>Try again</button></div>`;
@@ -1719,12 +1734,32 @@ function xLogin(err){
     <p class="hint">Ask Selvan for your PIN.</p></div>`;
   setTimeout(() => $('x-pin') && $('x-pin').focus(), 300);
 }
+const xCanApprove = () => X.d && /Admin|Approver/.test(X.d.user.role);
+const xPending = () => X.d.txns.filter(t => t.status === 'Pending MD');
+const xClosed = d => (X.d.closed || []).indexOf(String(d || '').slice(0, 7)) >= 0;
 function xGo(v){
   X.view = v; $('x-nav').hidden = $('x-user').hidden = false;
   $('x-user').textContent = X.d.user.name.split(' ')[0] + ' · ' + X.d.user.role;
+  const n = xPending().length;
+  $('x-nav').innerHTML = `<button data-x="home">Home</button><button data-x="list">Entries</button>`
+    + (xCanApprove() ? `<button data-x="appr">Approvals${n ? ` <span class="x-badge">${n}</span>` : ''}</button>` : '');
   document.querySelectorAll('#x-nav button').forEach(b => b.classList.toggle('on', b.dataset.x === v));
-  if (v === 'home') xHome(); else if (v === 'list') xList();
+  if (v === 'home') xHome(); else if (v === 'list') xList(); else if (v === 'appr') xAppr();
   $('exp').scrollTop = 0;
+  if (X.deep) { const t = X.d.txns.find(x => x.voucher === X.deep); X.deep = ''; if (t) xDetail(t.id); else toast('Voucher not found or not visible to you'); }
+}
+/* MD approvals: everything waiting, oldest first, with receipt preview and one-tap approve / reject */
+function xAppr(){
+  const list = xPending().slice().sort((a, b) => a.date.localeCompare(b.date));
+  xMain().innerHTML = `<div class="x-tot"><span>${list.length} waiting</span><span>Total AED ${aed(list.reduce((s, t) => s + t.amount, 0))}</span></div>`
+    + (list.length ? list.map(t => `<div class="card x-ap"><div class="body">
+      <div class="x-ap-top"><div><b>${esc(t.item || t.cat)}</b><small>${esc(t.voucher)} · ${dmy(t.date)} · ${esc(t.alloc)} · ${esc(t.cat)}</small>
+        <small>Paid to ${esc(t.party || '–')} · ${esc(t.method)} · by ${esc(t.by)}</small></div><div class="x-ap-amt">AED ${aed(t.amount)}</div></div>
+      ${(t.receipts || []).length ? `<div class="x-rc">${t.receipts.map(p => `<a class="ph" href="${viewUrl(p)}" target="_blank" rel="noopener"><img src="${thumb(p, 300)}" alt="Receipt"></a>`).join('')}</div>`
+        : `<p class="x-warn" style="margin:0">No receipt${t.noRcpt ? ': ' + esc(t.noRcpt) : ''}</p>`}
+      <div class="x-ap-btns"><button class="btn sec" data-xopen="${esc(t.id)}">Details</button>
+        <button class="btn danger" data-xrej="${esc(t.id)}">Reject</button><button class="btn ok" data-xok="${esc(t.id)}">Approve</button></div>
+    </div></div>`).join('') : '<div class="empty">Nothing is waiting for approval.</div>');
 }
 const xBox = () => X.d.user.box || (X.d.boxes || [])[0] || '';
 function xRow(t){
@@ -1743,7 +1778,7 @@ function xHome(){
   xMain().innerHTML = `
     <div class="x-bal${b.bal < 0 ? ' neg' : ''}"><small>${box ? 'CASH IN HAND · ' + esc(box.toUpperCase()) : 'NO CASH BOX'}</small>
       <b><span>AED</span>${aed(b.bal)}</b>
-      <div class="row"><div><i>Opening</i>${aed(b.opening)}</div><div><i>Received</i>+${aed(b.in)}</div><div><i>Spent (cash)</i>−${aed(b.out)}</div></div></div>
+      <div class="x-row"><div><i>Opening</i>${aed(b.opening)}</div><div><i>Received</i>+${aed(b.in)}</div><div><i>Spent (cash)</i>−${aed(b.out)}</div></div></div>
     ${b.bal < 0 ? `<div class="x-warn">This cash box is negative by AED ${aed(-b.bal)}. Record the cash received, or ask the MD for cash.</div>` : ''}
     <div class="x-stats"><div><b>${aed(sum(live.filter(t => t.date === t0)))}</b><small>Spent today</small></div>
       <div><b>${aed(sum(live.filter(t => t.date.slice(0, 7) === m0)))}</b><small>Spent this month</small></div>
@@ -1751,8 +1786,20 @@ function xHome(){
     ${xCanAdd() ? `<div class="x-big"><button class="out" data-xnew="EXPENSE">Expense</button><button class="in" data-xnew="CASH RECEIVED">Cash received</button></div>` : ''}
     ${xSeesAll() && Object.keys(d.balances).length > 1 ? `<div class="x-sec">All cash boxes</div><div class="x-boxes">${Object.keys(d.balances).map(k =>
       `<div><small>${esc(k)}</small><b class="${d.balances[k].bal < 0 ? 'neg' : ''}">${aed(d.balances[k].bal)}</b><small>In ${aed(d.balances[k].in)} · Out ${aed(d.balances[k].out)}</small></div>`).join('')}</div>` : ''}
+    ${xCanApprove() && pend ? `<button class="x-pendbar" data-x="appr"><b>${pend}</b> waiting for approval · AED ${aed(xPending().reduce((s, t) => s + t.amount, 0))}<span>Open</span></button>` : ''}
     <div class="x-sec">Latest entries <button data-x="list">See all</button></div>
-    <div class="x-list">${scope.slice(0, 6).map(xRow).join('') || '<div class="empty">No entries yet. Tap Expense or Cash received to add the first one.</div>'}</div>`;
+    <div class="x-list">${scope.slice(0, 6).map(xRow).join('') || '<div class="empty">No entries yet. Tap Expense or Cash received to add the first one.</div>'}</div>
+    ${xIsAdmin() ? xMonths() : ''}`;
+}
+/* admin: close / reopen months (closed months cannot be changed) */
+function xMonths(){
+  const ms = [...new Set([today().slice(0, 7), ...X.d.txns.map(t => t.date.slice(0, 7))])].sort().reverse().slice(0, 8);
+  const name = m => new Date(m + '-15T12:00').toLocaleString('en-GB', { month: 'long', year: 'numeric' });
+  return `<div class="x-sec">Month close</div><div class="x-list">${ms.map(m => { const c = xClosed(m + '-01');
+    const live = X.d.txns.filter(t => t.date.slice(0, 7) === m && !/Cancelled|Rejected/.test(t.status));
+    return `<div class="x-it" style="cursor:default"><span class="ic ${c ? 'tr' : 'in'}">${c ? '🔒' : m.slice(5)}</span>
+      <span class="t"><b>${name(m)}</b><small>${live.length} entries · out ${aed(live.filter(t => t.type === 'EXPENSE').reduce((s, t) => s + t.amount, 0))}${c ? ' · closed' : ''}</small></span>
+      <button class="btn sec" data-xmonth="${m}" data-close="${c ? '' : '1'}" style="flex:none;padding:7px 12px">${c ? 'Reopen' : 'Close'}</button></div>`; }).join('')}</div>`;
 }
 function xList(){
   const d = X.d, F = X.filt;
@@ -1777,13 +1824,21 @@ function xList(){
 }
 function xDetail(id){
   const t = X.d.txns.find(x => x.id === id); if (!t) return;
+  if (X.view !== 'detail') X.prev = X.view;
   X.view = 'detail'; const out = t.type === 'EXPENSE';
   const dd = (k, v) => v === '' || v == null || v === false ? '' : `<dt>${k}</dt><dd>${esc(v)}</dd>`;
-  const mine = t.by === X.d.user.name, can = t.status !== 'Cancelled' && (xIsAdmin() || (mine && !t.apBy));
+  const mine = t.by === X.d.user.name, locked = xClosed(t.date);
+  const can = !locked && t.status !== 'Cancelled' && (xIsAdmin() || (mine && !t.apBy)) && xCanAdd();
+  const tl = (t.history || []).length ? t.history : [{ at: t.at, who: t.by, a: 'Entered' }].concat(t.apBy ? [{ at: t.apAt, who: t.apBy, a: 'Approved' }] : []);
+  const tlHtml = `<div class="x-sec">History</div><ol class="x-tl">${tl.map(h => `<li class="${/Reject|Cancel/.test(h.a) ? 'bad' : /Approv/.test(h.a) ? 'ok' : ''}">
+      <b>${esc(h.a)}</b><small>${esc(h.who || '')}${h.at ? ' · ' + dmy(h.at) + ' ' + String(h.at).slice(11, 16) : ''}</small>
+      ${h.note ? `<div class="hint">${esc(h.note)}</div>` : ''}
+      ${(h.ch || []).map(c => `<div class="x-ch">${esc(c[0])}: <s>${esc(c[1] || '–')}</s> → <b>${esc(c[2] || '–')}</b></div>`).join('')}</li>`).join('')}</ol>`;
   xMain().innerHTML = `<div class="card"><div class="body">
       <div class="hint">${esc(t.voucher)} · ${esc(t.type)}</div>
       <div class="x-big-amt" style="color:${out ? 'var(--danger)' : 'var(--ok)'}">${out ? '−' : '+'} AED ${aed(t.amount)}</div>
       <span class="x-st ${esc(String(t.status).split(' ')[0])}">${esc(t.status)}</span>
+      ${t.status === 'Pending MD' && xCanApprove() && !locked ? `<div class="x-ap-btns" style="grid-template-columns:1fr 1fr;margin-top:12px"><button class="btn danger" data-xrej="${esc(t.id)}">Reject</button><button class="btn ok" data-xok="${esc(t.id)}">Approve</button></div>` : ''}
       <dl class="x-dl" style="margin-top:14px">${dd('Date', dmy(t.date))}${dd('Allocated to', t.alloc)}${dd('Category', t.cat)}${dd('Item', t.item)}
         ${dd('Description', t.desc)}${t.qty ? dd('Qty × Rate', t.qty + ' ' + t.unit + ' × ' + aed(t.rate)) : ''}
         ${t.vat ? dd('VAT invoice', 'Net ' + aed(t.net) + ' + VAT ' + aed(t.vatAmt)) + dd('Supplier TRN', t.trn) : ''}
@@ -1791,11 +1846,15 @@ function xDetail(id){
         ${dd('Vehicle', t.vehicle)}${dd('Odometer', t.odo ? t.odo + ' km' : '')}${dd('Staff', t.staff)}
         ${(t.splits || []).length ? dd('Site split', t.splits.map(s => s.site + ' ' + aed(s.amount)).join(' · ')) : ''}
         ${dd('No receipt', t.noRcpt)}${dd('Remarks', t.remarks)}${dd('Entered', t.by + ' · ' + dmy(t.at) + ' ' + String(t.at).slice(11, 16))}
-        ${dd('Approved by', t.apBy)}${dd('Cancelled', t.cancelReason)}</dl>
+        ${dd('Approved by', t.apBy)}${dd('Rejected because', t.rejReason)}${dd('Cancelled', t.cancelReason)}</dl>
+      ${locked ? '<p class="x-md" style="margin-top:12px">This month is closed – the entry cannot be changed.</p>' : ''}
+      ${t.status === 'Rejected' && can ? '<p class="x-warn" style="margin-top:12px">Rejected by the MD. Correct it with Edit and save – it goes back to the MD. Until then this cash is not accounted for.</p>' : ''}
       ${(t.receipts || []).length ? `<div class="x-sec">Receipts</div><div class="x-rc">${t.receipts.map(p => `<a class="ph" href="${viewUrl(p)}" target="_blank" rel="noopener"><img src="${thumb(p, 400)}" alt="Receipt"></a>`).join('')}</div>` : ''}
+      ${tlHtml}
     </div></div>
-    <div class="x-save"><div><button class="btn sec" data-x="list">Back</button>
-      ${can ? `<button class="btn sec" data-xcancel="${esc(t.id)}" style="color:var(--danger)">Cancel entry</button><button class="btn" data-xedit="${esc(t.id)}">Edit</button>` : ''}</div></div>`;
+    <div class="x-save"><div><button class="btn sec" data-xbackto="${X.prev === 'appr' ? 'appr' : 'list'}">Back</button>
+      ${t.status !== 'Cancelled' ? `<button class="btn sec" data-xprint="${esc(t.id)}">Voucher</button>` : ''}
+      ${can ? `<button class="btn sec" data-xcancel="${esc(t.id)}" style="color:var(--danger)">Cancel</button><button class="btn" data-xedit="${esc(t.id)}">Edit</button>` : ''}</div></div>`;
   $('exp').scrollTop = 0;
 }
 
@@ -1880,7 +1939,93 @@ async function xSave(){
     if (f.type === 'EXPENSE') keep('exp.last', { alloc: f.alloc, cat: f.cat });
     toast(f.id ? 'Changes saved' : (f.type === 'EXPENSE' ? 'Expense saved' : 'Cash received saved'));
     X.f = null; xGo('home');
-  } catch (e) { err.textContent = errText(e); btn.disabled = false; btn.textContent = 'Try again'; err.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+  } catch (e) {
+    const m = errText(e);
+    if (/^DUPLICATE\|/.test(m)) {                       // same date + party + amount already exists
+      const [, v, what] = m.split('|'); btn.disabled = false; btn.textContent = f.id ? 'Save changes' : 'Save';
+      if (await ask(`This looks like a duplicate of ${v} (${what}) – same date, same party and same amount.\n\nSave it anyway?`, 'Save anyway')) { f.force = true; return xSave(); }
+      err.textContent = 'Not saved – possible duplicate of ' + v + '.'; return;
+    }
+    err.textContent = m; btn.disabled = false; btn.textContent = 'Try again'; err.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+}
+async function xDecide(id, ok){
+  const t = X.d.txns.find(x => x.id === id); if (!t) return;
+  let reason = '';
+  if (!ok) { reason = prompt(`Reject ${t.voucher} (AED ${aed(t.amount)})?\n\nWrite the reason – the engineer will see it:`); if (reason == null) return;
+    if (!reason.trim()) { toast('Write the reason to reject'); return; } }
+  else if (!await ask(`Approve ${t.voucher} – ${t.item || t.cat}, AED ${aed(t.amount)}?`, 'Approve')) return;
+  try { X.d = await server('expApprove', id, ok, reason, X.pin); keep('exp.cache', X.d); toast(t.voucher + (ok ? ' approved' : ' rejected'));
+    xGo(X.view === 'detail' ? (X.prev === 'appr' ? 'appr' : 'list') : (X.view === 'appr' ? 'appr' : 'list')); }
+  catch (er) { toast(errText(er)); }
+}
+
+/* ---------- printable Payment Voucher / Receipt Voucher (A5 landscape, with QR) ---------- */
+function aedWords(n){
+  const a = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+  const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+  const w = x => x < 20 ? a[x] : x < 100 ? b[Math.floor(x / 10)] + (x % 10 ? ' ' + a[x % 10] : '') : a[Math.floor(x / 100)] + ' Hundred' + (x % 100 ? ' ' + w(x % 100) : '');
+  const big = x => { if (!x) return 'Zero'; let s = '';
+    for (const [v, l] of [[1e9, 'Billion'], [1e6, 'Million'], [1e3, 'Thousand']]) if (x >= v) { s += w(Math.floor(x / v)) + ' ' + l + ' '; x %= v; }
+    return (s + (x ? w(x) : '')).trim(); };
+  const d = Math.floor(n + 1e-9), f = Math.round((n - d) * 100);
+  return 'UAE Dirhams ' + big(d) + (f ? ' and ' + w(f) + ' Fils' : '') + ' Only';
+}
+function xQR(text){
+  return new Promise(res => {
+    const go = () => { try { const el = document.createElement('div');
+      new QRCode(el, { text, width: 256, height: 256, correctLevel: QRCode.CorrectLevel.M });
+      setTimeout(() => { const c = el.querySelector('canvas'); res(c ? c.toDataURL() : ((el.querySelector('img') || {}).src || '')); }, 80); } catch (e) { res(''); } };
+    if (window.QRCode) return go();
+    const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+    s.onload = go; s.onerror = () => res(''); document.head.appendChild(s);
+  });
+}
+async function xVoucher(t){
+  if (!t) return;
+  const out = t.type === 'EXPENSE', title = out ? 'PAYMENT VOUCHER' : t.type === 'TRANSFER' ? 'CASH TRANSFER VOUCHER' : 'RECEIPT VOUCHER';
+  toast('Preparing voucher…');
+  const qr = await xQR('https://porselvan27.github.io/#v=' + t.voucher);
+  const row = (k, v) => v === '' || v == null ? '' : `<tr><th>${k}</th><td>${esc(v)}</td></tr>`;
+  const stamp = t.status === 'Approved' ? '' : `<div class="pv-stamp">${esc(t.status === 'Pending MD' ? 'PENDING APPROVAL' : String(t.status).toUpperCase())}</div>`;
+  $('sheet').innerHTML = `<style>
+    @page{size:A5 landscape;margin:7mm}
+    .pv{position:relative;font:9.5pt/1.35 Arial,sans-serif;color:#18212f;border:1.5px solid #0b2a5b;border-radius:6px;overflow:hidden}
+    .pv-lh{display:block;width:100%;height:20mm;object-fit:contain;background:#fff;border-bottom:3px solid #c9a227}
+    .pv-band{display:flex;align-items:center;justify-content:space-between;background:#0b2a5b;color:#fff;padding:5px 10px}
+    .pv-band h1{margin:0;font:700 14pt Arial;letter-spacing:.08em}
+    .pv-band div{text-align:right;font-size:9pt}.pv-band b{color:#f2d27a;font-size:11pt}
+    .pv-body{display:flex;gap:10px;padding:8px 10px}
+    .pv-body table{flex:1;border-collapse:collapse;width:100%}
+    .pv-body th{width:30%;text-align:left;color:#5d6a7e;font-weight:600;padding:3px 6px;border-bottom:1px solid #e3eaf5;vertical-align:top}
+    .pv-body td{padding:3px 6px;border-bottom:1px solid #e3eaf5;font-weight:600}
+    .pv-amt td{font-size:13pt;color:#0b2a5b}.pv-words td{font-style:italic;font-weight:500}
+    .pv-qr{width:30mm;text-align:center;font-size:7pt;color:#5d6a7e}.pv-qr img{width:28mm;height:28mm;display:block;margin:0 auto 2px}
+    .pv-sig{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:4px 10px 6px}
+    .pv-sig div{border-top:1px solid #18212f;padding-top:3px;text-align:center;font-size:8pt;font-weight:700;margin-top:16mm}
+    .pv-sig small{display:block;font-weight:400;color:#5d6a7e;min-height:10px}
+    .pv-foot{background:#e3eaf5;color:#0b2a5b;font-size:7.5pt;text-align:center;padding:3px}
+    .pv-stamp{position:absolute;top:44%;left:22%;transform:rotate(-14deg);border:3px solid #c0392b;color:#c0392b;font:700 20pt Arial;padding:4px 14px;opacity:.35;letter-spacing:.06em}
+  </style>
+  <div class="pv">${stamp}
+    <img class="pv-lh" src="${LOGO}" alt="Al Tarwi Building Contracting">
+    <div class="pv-band"><h1>${title}</h1><div>No. <b>${esc(t.voucher)}</b><br>Date: ${dmy(t.date)}</div></div>
+    <div class="pv-body"><table>
+      ${row(out ? 'Paid to' : 'Received from', out ? (t.party || t.staff || '') : t.source)}
+      <tr class="pv-amt"><th>Amount</th><td>AED ${aed(t.amount)}</td></tr>
+      <tr class="pv-words"><th>In words</th><td>${esc(aedWords(t.amount))}</td></tr>
+      ${row('Being', [t.item, t.desc].filter(Boolean).join(' – ') || t.cat)}
+      ${out ? row('Site / overhead', t.alloc) + row('Category', t.cat) : ''}
+      ${t.qty ? row('Qty × rate', t.qty + ' ' + t.unit + ' × ' + aed(t.rate)) : ''}
+      ${t.vat ? row('VAT invoice', 'Net ' + aed(t.net) + ' + VAT ' + aed(t.vatAmt) + (t.trn ? ' · TRN ' + t.trn : '')) : ''}
+      ${row('Payment', out ? t.method + (t.ref ? ' · ' + t.ref : '') : 'Cash' + (t.ref ? ' · ' + t.ref : ''))}
+      ${row('Cash box', t.box)}${row('Vehicle', t.vehicle)}${row('Staff', out ? t.staff : '')}${row('Remarks', t.remarks)}
+    </table>${qr ? `<div class="pv-qr"><img src="${qr}" alt="QR">Scan to open in the Al Tarwi app</div>` : ''}</div>
+    <div class="pv-sig"><div>Prepared by<small>${esc(t.by)}</small></div><div>Checked by<small></small></div>
+      <div>Approved by<small>${esc(t.apBy && !/Imported/.test(t.apBy) ? t.apBy : '')}</small></div><div>${out ? 'Received by' : 'Received from'}<small></small></div></div>
+    <div class="pv-foot">Al Tarwi Building Contracting · Trade License No. 53254 · Al Dhait, Ras Al Khaimah, UAE</div>
+  </div>`;
+  waitImages($('sheet')).then(() => print());
 }
 
 /* ---------- events ---------- */
@@ -1900,6 +2045,16 @@ $('exp').addEventListener('click', async e => {
   if (b.id === 'x-user') { if (await ask(`Signed in as ${X.d.user.name} (${X.d.user.role}). Sign out of Expenses on this phone?`, 'Sign out')) {
     X.pin = ''; X.d = null; keep('exp.pin', ''); keep('exp.cache', null); xLogin(); } return; }
   if (D.xnew) return xNew(D.xnew);
+  if (D.xok) return xDecide(D.xok, true);
+  if (D.xrej) return xDecide(D.xrej, false);
+  if (D.xprint) return xVoucher(X.d.txns.find(t => t.id === D.xprint));
+  if (D.xbackto) return xGo(D.xbackto);
+  if (D.xmonth) {
+    const close = !!D.close, name = new Date(D.xmonth + '-15T12:00').toLocaleString('en-GB', { month: 'long', year: 'numeric' });
+    if (!await ask(close ? `Close ${name}? Nobody can add, change, approve or cancel entries in this month until you reopen it.` : `Reopen ${name}? Entries can be changed again.`, close ? 'Close month' : 'Reopen')) return;
+    try { X.d = await server('expCloseMonth', D.xmonth, close, X.pin); keep('exp.cache', X.d); toast(name + (close ? ' closed' : ' reopened')); xGo('home'); } catch (er) { toast(errText(er)); }
+    return;
+  }
   if (D.xopen) return xDetail(D.xopen);
   if (D.xedit) return xNew(null, X.d.txns.find(t => t.id === D.xedit));
   if ('xback' in D) { X.f = null; return xGo('home'); }
@@ -1922,6 +2077,9 @@ $('exp').addEventListener('input', e => {
   if (t.dataset.xf) { X.filt[t.dataset.xf] = t.value; if (t.dataset.xf === 'q') { clearTimeout(X._q); X._q = setTimeout(() => { xList(); const q = document.querySelector('[data-xf=q]'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 350); } else xList(); }
 });
 $('exp').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'x-pin') $('x-go').click(); });
+/* QR / link "…/#v=PCV-2026-0001" opens that voucher (after the PIN) */
+{ const v = decodeURIComponent((location.hash.match(/^#v=([\w-]+)/) || [])[1] || '');
+  if (v) { X.deep = v; history.replaceState(null, '', location.pathname + location.search); setTimeout(openExp, 500); } }
 $('x-photo').onchange = async e => {
   const file = e.target.files[0]; e.target.value = ''; if (!file || !X.f) return;
   const p = { uploading: true, src: '' }; X.f.receipts.push(p);
