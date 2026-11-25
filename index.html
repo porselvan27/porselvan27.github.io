@@ -576,6 +576,14 @@ body.at-exp{overflow:hidden}body.at-exp .bar{display:none!important}
 .x-hand{background:#e3f6ec;border:1px solid #9fdcbc;border-radius:16px;padding:12px;margin-bottom:12px;display:grid;gap:10px}
 .x-hand b{display:block;color:#0f5a39;font-size:15px}.x-hand small{color:#3b6b52;font-size:12px}
 .x-reimb{display:grid;grid-template-columns:1fr auto;gap:8px;margin:8px 0 4px}
+.x-pbar{height:6px;border-radius:9px;background:color-mix(in srgb,var(--line) 70%,transparent);overflow:hidden;margin-top:6px;width:100%}
+.x-pbar i{display:block;height:100%;border-radius:9px;background:linear-gradient(90deg,#17a35c,#38c7a5);animation:grow 1s var(--ease) both}
+.x-pbar.warn i{background:linear-gradient(90deg,#f5a524,#f7c35f)}.x-pbar.over i{background:linear-gradient(90deg,#e0604c,#c0392b)}
+.x-bal .x-pbar{background:#ffffff33;position:relative;z-index:1;margin-top:12px}.x-bal .x-pbar i{background:#fff}
+.x-months{display:flex;gap:6px;align-items:flex-end;height:150px;padding:10px;background:var(--card);border-radius:16px;box-shadow:var(--shadow);overflow-x:auto}
+.x-months div{flex:1 0 46px;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:3px}
+.x-months i{display:block;width:70%;border-radius:6px 6px 2px 2px;background:linear-gradient(#1d64c4,#5aa9ff);animation:rowIn .6s var(--ease) both}
+.x-months b{font-size:10px}.x-months small{font-size:10.5px;color:var(--muted)}
 /* stock: site toggle, balance cards, daily groups */
 .seg{display:flex;gap:4px;padding:4px;background:var(--pill);border-radius:14px;overflow-x:auto;scrollbar-width:none;margin:6px 0 14px}
 .seg::-webkit-scrollbar{display:none}
@@ -1757,6 +1765,7 @@ function xGo(v){
   document.querySelectorAll('#x-nav button').forEach(b => b.classList.toggle('on', b.dataset.x === v));
   if (v === 'home') xHome(); else if (v === 'list') xList(); else if (v === 'appr') xAppr();
   else if (v === 'count') xCount(); else if (v === 'adv') xAdv(); else if (v === 'reimb') xReimb();
+  else if (v === 'cost') xCost(); else if (v === 'budget') xBudget(); else if (v === 'veh') xVeh();
   $('exp').scrollTop = 0;
   if (X.deep) { const t = X.d.txns.find(x => x.voucher === X.deep); X.deep = ''; if (t) xDetail(t.id); else toast('Voucher not found or not visible to you'); }
 }
@@ -1820,6 +1829,8 @@ function xHome(){
       ${xCanAdd() && box ? `<button data-xnew="TRANSFER" style="--ic:var(--i-arrow)"><b>Hand over cash</b><small>Give cash to another person</small></button>` : ''}
       ${box ? `<button data-x="count" style="--ic:var(--i-check)"><b>Count cash</b><small>${(() => { const c = (d.counts || []).find(c => c.box === box); return c ? 'Last: ' + dmy(c.date) + (c.diff ? ' · diff ' + aed(c.diff) : ' · OK') : 'Not counted yet'; })()}</small></button>` : ''}
       <button data-x="adv" style="--ic:var(--i-users)"><b>Staff advances</b><small>${(() => { const a = xAdvances().filter(p => p.due > 0); return a.length ? a.length + ' owe AED ' + aed(a.reduce((s, p) => s + p.due, 0)) : 'Nothing outstanding'; })()}</small></button>
+      ${xSeesAll() ? `<button data-xcostall style="--ic:var(--i-grid)"><b>Site costs</b><small>Cost to date, budget vs actual</small></button>
+      <button data-x="veh" style="--ic:var(--i-pin)"><b>Vehicle costs</b><small>Fuel, maintenance, cost per km</small></button>` : ''}
       <button data-x="reimb" style="--ic:var(--i-wallet)"><b>To reimburse</b><small>${(() => { const r = xToReimb(); return r.length ? r.length + ' · AED ' + aed(r.reduce((s, t) => s + t.amount, 0)) : 'Nothing to pay back'; })()}</small></button>
     </div>
     ${xSeesAll() && Object.keys(d.balances).length > 1 ? `<div class="x-sec">All cash boxes</div><div class="x-boxes">${Object.keys(d.balances).map(k =>
@@ -1903,6 +1914,147 @@ function xReimb(){
       ${xIsAdmin() ? `<div class="x-reimb"><select data-xrbox="${esc(p)}"><option value="">Paid by bank / other</option>${X.d.boxes.filter(b => !/^TEST/.test(b)).map(opt).join('')}</select>
         <button class="btn ok" data-xreimb="${esc(p)}">Mark AED ${aed(sum)} reimbursed</button></div>` : ''}`; }).join('')
       || '<div class="empty">Nothing to reimburse. Expenses paid from someone\'s own pocket appear here until they are paid back.</div>'}
+    <div class="x-save"><div><button class="btn sec" data-x="home">Back</button></div></div>`;
+}
+/* ---------- site costs: expenses (with site splits) + company labour from the Daily Site Report ---------- */
+const xLive2 = t => t.type === 'EXPENSE' && !/Cancelled|Rejected/.test(t.status);
+const xInPer = (d, per) => !per || String(d).slice(0, 7) === per;
+function xCosts(per){
+  const by = {};
+  X.d.txns.forEach(t => { if (!xLive2(t) || !xInPer(t.date, per)) return;
+    const parts = (t.splits || []).length ? t.splits.map(s => ({ site: s.site, amt: +s.amount || 0 })) : [{ site: t.alloc || '(not given)', amt: t.amount }];
+    parts.forEach(p => { const s = by[p.site] || (by[p.site] = { site: p.site, total: 0, cats: {}, parties: {}, months: {}, n: 0 });
+      s.total += p.amt; s.n++; const c = t.cat || 'Miscellaneous'; s.cats[c] = (s.cats[c] || 0) + p.amt;
+      if (t.party) s.parties[t.party] = (s.parties[t.party] || 0) + p.amt; const m = t.date.slice(0, 7); s.months[m] = (s.months[m] || 0) + p.amt; }); });
+  return by;
+}
+function xLabour(site, per){
+  const r = { sk: 0, us: 0, sub: 0, days: 0 }, days = new Set(), st = X.d.settings;
+  (typeof reports !== 'undefined' ? reports : []).forEach(rep => { if (normSite(rep.site) !== site || !xInPer(rep.date, per)) return;
+    days.add(rep.date); (rep.co || []).forEach(x => { r.sk += num(x.skilled); r.us += num(x.unskilled); });
+    (rep.sub || []).forEach(x => { r.sub += num(x.skilled) + num(x.unskilled); }); });
+  r.days = days.size; r.cost = xr2(r.sk * (st.rateSkilled || 0) + r.us * (st.rateUnskilled || 0)); r.rated = !!(st.rateSkilled || st.rateUnskilled);
+  return r;
+}
+const xPct = (a, b) => b > 0 ? Math.round(a / b * 100) : 0;
+const xBar = (a, b) => { const p = xPct(a, b); return b > 0 ? `<div class="x-pbar ${p >= 100 ? 'over' : p >= 80 ? 'warn' : ''}"><i style="width:${Math.min(100, p)}%"></i></div>` : ''; };
+function xSiteBudget(site){
+  const s = X.d.sites.find(x => x.code === site), total = xr2(String((s || {}).budget || '').replace(/,/g, ''));
+  const cats = {}; (X.d.budgets || []).filter(b => b.site === site).forEach(b => { cats[b.cat] = b.budget; });
+  return { total, cats };
+}
+function xCost(){
+  const per = X.costPer || '', by = xCosts(per), d = X.d;
+  const months = [...new Set(d.txns.filter(xLive2).map(t => t.date.slice(0, 7)))].sort().reverse();
+  const perSel = `<select id="xk-per"><option value="">All dates (to date)</option>${months.map(m => `<option value="${m}"${m === per ? ' selected' : ''}>${new Date(m + '-15T12:00').toLocaleString('en-GB', { month: 'long', year: 'numeric' })}</option>`).join('')}</select>`;
+  const ov = d.settings.overheads || [];
+  if (X.costSite) {
+    const site = X.costSite, s = by[site] || { total: 0, cats: {}, parties: {}, months: {}, n: 0 }, info = d.sites.find(x => x.code === site) || {};
+    const isOv = ov.includes(site), lab = isOv ? null : xLabour(site, per), bud = xSiteBudget(site);
+    const grand = xr2(s.total + (lab && lab.rated ? lab.cost : 0));
+    const catNames = [...new Set([...Object.keys(s.cats), ...Object.keys(bud.cats)])].sort((a, b) => (s.cats[b] || 0) - (s.cats[a] || 0));
+    const pm = Object.keys(s.months).sort(), mx = Math.max(1, ...pm.map(m => s.months[m]));
+    xMain().innerHTML = `
+      <div class="x-bal${bud.total && grand > bud.total ? ' neg' : ''}"><small>${isOv ? 'OVERHEAD' : 'SITE'} · ${esc(site)}${info.client ? ' · ' + esc(info.client) : ''}</small>
+        <b><span>AED</span>${aed(grand)}</b>
+        <div class="x-row"><div><i>Expenses</i>${aed(s.total)}</div>${lab ? `<div><i>Company labour</i>${lab.rated ? aed(lab.cost) : '–'}</div>` : ''}<div><i>Budget</i>${bud.total ? aed(bud.total) : 'not set'}</div>
+        ${bud.total ? `<div><i>Used</i>${xPct(grand, bud.total)}%</div>` : ''}</div>${bud.total ? xBar(grand, bud.total) : ''}</div>
+      ${bud.total && grand >= bud.total * 0.8 ? `<div class="x-warn">${grand >= bud.total ? 'Over budget by AED ' + aed(grand - bud.total) : xPct(grand, bud.total) + '% of the budget is used – only AED ' + aed(bud.total - grand) + ' left'}.</div>` : ''}
+      <div class="x-filt" style="grid-template-columns:1fr">${perSel}</div>
+      <div class="x-sec">By category</div>
+      <div class="x-list">${catNames.map(c => { const a = s.cats[c] || 0, b = bud.cats[c] || 0;
+        return `<div class="x-it" style="cursor:default;flex-wrap:wrap"><span class="t"><b>${esc(c)}</b><small>${b ? 'Budget ' + aed(b) + ' · ' + xPct(a, b) + '%' : 'No budget'}</small>${xBar(a, b)}</span>
+          <span class="a ${b && a > b ? 'out' : ''}">${aed(a)}</span></div>`; }).join('') || '<div class="empty">No expenses for this period.</div>'}
+        ${lab ? `<div class="x-it" style="cursor:default"><span class="t"><b>Company labour (Daily Site Report)</b>
+          <small>${lab.days} report days · skilled ${lab.sk} · unskilled ${lab.us} man-days${lab.sub ? ' · sub-contractor ' + lab.sub + ' (paid via subcontractor bills)' : ''}</small>
+          ${lab.rated ? '' : '<small style="color:var(--danger)">Set the day rates (Budget button) to cost this labour.</small>'}</span>
+          <span class="a">${lab.rated ? aed(lab.cost) : '–'}</span></div>` : ''}</div>
+      ${Object.keys(s.parties).length ? `<div class="x-sec">Paid to (top 8)</div><div class="x-list">${Object.entries(s.parties).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([p, a]) =>
+        `<div class="x-it" style="cursor:default"><span class="t"><b>${esc(p)}</b></span><span class="a">${aed(a)}</span></div>`).join('')}</div>` : ''}
+      ${pm.length > 1 ? `<div class="x-sec">By month</div><div class="x-months">${pm.map(m => `<div><i style="height:${Math.max(4, s.months[m] / mx * 100)}%"></i><b>${aed(Math.round(s.months[m]))}</b><small>${m.slice(5)}/${m.slice(2, 4)}</small></div>`).join('')}</div>` : ''}
+      <div class="x-save"><div><button class="btn sec" data-xcostback>Back</button>${xIsAdmin() ? '<button class="btn sec" data-x="budget">Budget</button>' : ''}<button class="btn" data-xcostprint>Print</button></div></div>`;
+    return;
+  }
+  const rows = Object.values(by), sitesR = rows.filter(r => !ov.includes(r.site)).sort((a, b) => a.site.localeCompare(b.site)), ovR = rows.filter(r => ov.includes(r.site));
+  d.sites.forEach(x => { if (xSiteBudget(x.code).total && !by[x.code]) sitesR.push({ site: x.code, total: 0 }); });
+  const line = r => { const lab = ov.includes(r.site) ? null : xLabour(r.site, per), g = xr2(r.total + (lab && lab.rated ? lab.cost : 0)), b = xSiteBudget(r.site).total;
+    return `<button class="x-it" data-xsite="${esc(r.site)}" style="flex-wrap:wrap"><span class="ic ${b && g > b ? '' : 'in'}">${esc(String(r.site).replace(/^[A-Z]+/, '').slice(0, 3) || r.site.slice(0, 2))}</span>
+      <span class="t"><b>${esc(r.site)}</b><small>${b ? 'Budget ' + aed(b) + ' · ' + xPct(g, b) + '% used' : 'No budget set'}${lab && lab.rated && lab.cost ? ' · incl. labour ' + aed(lab.cost) : ''}</small>${xBar(g, b)}</span>
+      <span class="a ${b && g > b ? 'out' : ''}">${aed(g)}</span></button>`; };
+  const tot = rows.reduce((s, r) => s + r.total, 0);
+  xMain().innerHTML = `<div class="x-filt" style="grid-template-columns:1fr">${perSel}</div>
+    <div class="x-tot"><span>Total expenses AED ${aed(tot)}</span><span>${sitesR.length} sites</span></div>
+    <div class="x-sec">Sites</div><div class="x-list">${sitesR.map(line).join('') || '<div class="empty">No site expenses yet.</div>'}</div>
+    ${ovR.length ? `<div class="x-sec">Overheads</div><div class="x-list">${ovR.map(line).join('')}</div>` : ''}
+    <div class="x-save"><div><button class="btn sec" data-x="home">Back</button></div></div>`;
+}
+/* admin: budget per site and per category, plus labour day rates */
+function xBudget(){
+  const site = X.costSite, b = xSiteBudget(site), st = X.d.settings;
+  xMain().innerHTML = `<div class="card"><h2>BUDGET · ${esc(site)}</h2><div class="body" style="display:grid;gap:10px">
+      <div><label for="xb-total">Total budget for the site (AED)</label><input id="xb-total" class="x-amt" inputmode="decimal" value="${b.total || ''}" placeholder="0.00"></div>
+      <p class="hint">Optional: budget per category. Leave blank if not needed.</p>
+      ${X.d.cats.map(c => `<div class="x-two" style="align-items:center"><label style="margin:0">${esc(c.name)}</label>
+        <input data-xbcat="${esc(c.name)}" inputmode="decimal" value="${b.cats[c.name] || ''}" placeholder="–"></div>`).join('')}
+      <button class="btn ok" id="xb-save">Save budget</button></div></div>
+    <div class="card"><h2>LABOUR DAY RATES</h2><div class="body" style="display:grid;gap:10px">
+      <p class="hint">Used to cost company labour from the Daily Site Report attendance (all sites).</p>
+      <div class="x-two"><div><label for="xr-sk">Skilled (AED/day)</label><input id="xr-sk" inputmode="decimal" value="${st.rateSkilled || ''}"></div>
+        <div><label for="xr-us">Unskilled (AED/day)</label><input id="xr-us" inputmode="decimal" value="${st.rateUnskilled || ''}"></div></div>
+      <button class="btn sec" id="xr-save">Save day rates</button></div></div>
+    <div class="x-save"><div><button class="btn sec" data-x="cost">Back</button></div></div>`;
+}
+/* printable site cost sheet (A4) */
+function xCostPrint(){
+  const site = X.costSite, per = X.costPer || '', s = xCosts(per)[site] || { total: 0, cats: {}, parties: {}, months: {} };
+  const info = X.d.sites.find(x => x.code === site) || {}, isOv = (X.d.settings.overheads || []).includes(site), lab = isOv ? null : xLabour(site, per), bud = xSiteBudget(site);
+  const grand = xr2(s.total + (lab && lab.rated ? lab.cost : 0));
+  const perTxt = per ? new Date(per + '-15T12:00').toLocaleString('en-GB', { month: 'long', year: 'numeric' }) : 'All dates to ' + dmy(today());
+  const cats = [...new Set([...Object.keys(s.cats), ...Object.keys(bud.cats)])].sort((a, b) => (s.cats[b] || 0) - (s.cats[a] || 0));
+  const lines = X.d.txns.filter(t => xLive2(t) && xInPer(t.date, per) && ((t.splits || []).length ? t.splits.some(x => x.site === site) : t.alloc === site)).sort((a, b) => a.date.localeCompare(b.date));
+  $('sheet').innerHTML = `<style>@page{size:A4 portrait;margin:10mm}.sc{font:9.5pt Arial,sans-serif;color:#18212f}
+    .sc img{width:100%;height:24mm;object-fit:contain;border-bottom:3px solid #c9a227}.sc h1{background:#0b2a5b;color:#fff;font:700 13pt Arial;letter-spacing:.06em;margin:0;padding:6px 10px}
+    .sc .inf{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:8px 0}.sc .inf div{border:1px solid #cfd8e6;border-radius:5px;padding:4px 7px}.sc .inf b{display:block;font-size:7.5pt;color:#5d6a7e;text-transform:uppercase}
+    .sc table{width:100%;border-collapse:collapse;margin-bottom:8px}.sc th{background:#e3eaf5;color:#0b2a5b;text-align:left;padding:4px 7px;font-size:8.5pt}
+    .sc td{padding:4px 7px;border-bottom:1px solid #dfe5ee}.sc .n{text-align:right;white-space:nowrap}.sc tfoot td,.sc .tot td{font-weight:700;background:#e3eaf5}
+    .sc h2{font:700 10.5pt Arial;color:#0b2a5b;margin:10px 0 4px;letter-spacing:.04em}.sc .over{color:#c0392b;font-weight:700}
+    .sc .sig{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:18mm}.sc .sig div{border-top:1px solid #18212f;text-align:center;font-weight:700;padding-top:3px;font-size:9pt}
+    .sc .ft{margin-top:8px;font-size:7.5pt;color:#5d6a7e}</style>
+    <div class="sc"><img src="${LOGO}" alt=""><h1>${isOv ? 'OVERHEAD' : 'SITE'} COST SHEET – ${esc(site)}</h1>
+    <div class="inf"><div><b>Client</b>${esc(info.client || '–')}</div><div><b>Plot</b>${esc(info.plot || '–')}</div><div><b>Consultant</b>${esc(info.consultant || '–')}</div><div><b>Period</b>${esc(perTxt)}</div></div>
+    <h2>SUMMARY</h2><table><thead><tr><th>Category</th><th class="n">Spent (AED)</th><th class="n">Budget (AED)</th><th class="n">% used</th></tr></thead><tbody>
+    ${cats.map(c => { const a = s.cats[c] || 0, b = bud.cats[c] || 0; return `<tr><td>${esc(c)}</td><td class="n">${aed(a)}</td><td class="n">${b ? aed(b) : '–'}</td><td class="n${b && a > b ? ' over' : ''}">${b ? xPct(a, b) + '%' : '–'}</td></tr>`; }).join('')}
+    ${lab ? `<tr><td>Company labour (DSR: ${lab.sk} skilled + ${lab.us} unskilled man-days)</td><td class="n">${lab.rated ? aed(lab.cost) : 'rates not set'}</td><td class="n">–</td><td class="n">–</td></tr>` : ''}
+    </tbody><tfoot><tr><td>TOTAL COST</td><td class="n">${aed(grand)}</td><td class="n">${bud.total ? aed(bud.total) : '–'}</td><td class="n${bud.total && grand > bud.total ? ' over' : ''}">${bud.total ? xPct(grand, bud.total) + '%' : '–'}</td></tr></tfoot></table>
+    <h2>EXPENSE LINES</h2><table><thead><tr><th>Date</th><th>Voucher</th><th>Category</th><th>Item / paid to</th><th class="n">AED</th></tr></thead><tbody>
+    ${lines.map(t => { const a = (t.splits || []).length ? (+((t.splits.find(x => x.site === site) || {}).amount) || 0) : t.amount;
+      return `<tr><td>${dmy(t.date)}</td><td>${esc(t.voucher)}</td><td>${esc(t.cat)}</td><td>${esc([t.item, t.party].filter(Boolean).join(' – '))}${(t.splits || []).length ? ' (share)' : ''}</td><td class="n">${aed(a)}</td></tr>`; }).join('') || '<tr><td colspan="5">No expenses.</td></tr>'}
+    </tbody><tfoot><tr><td colspan="4">Total expenses</td><td class="n">${aed(s.total)}</td></tr></tfoot></table>
+    <div class="sig"><div>Prepared by</div><div>Checked by</div><div>Approved by (MD)</div></div>
+    <p class="ft">Printed ${dmy(today())} from the Al Tarwi app · Al Tarwi Building Contracting · Trade License No. 53254 · Al Dhait, Ras Al Khaimah</p></div>`;
+  waitImages($('sheet')).then(() => print());
+}
+/* ---------- vehicle costs ---------- */
+function xVeh(){
+  const per = X.vehPer || '', d = X.d, m = {};
+  d.txns.forEach(t => { if (!xLive2(t) || !t.vehicle || !xInPer(t.date, per)) return;
+    const v = m[t.vehicle] || (m[t.vehicle] = { name: t.vehicle, fuel: 0, maint: 0, other: 0, lines: [], odo: [] });
+    if (/Fuel/i.test(t.cat)) v.fuel += t.amount; else if (/Vehicle/i.test(t.cat)) v.maint += t.amount; else v.other += t.amount;
+    v.lines.push(t); if (t.odo) v.odo.push({ date: t.date, odo: +t.odo, fuel: /Fuel/i.test(t.cat) ? t.amount : 0, litres: /^l/i.test(t.unit || '') ? +t.qty || 0 : 0 }); });
+  const months = [...new Set(d.txns.filter(t => xLive2(t) && t.vehicle).map(t => t.date.slice(0, 7)))].sort().reverse();
+  const cards = Object.values(m).sort((a, b) => (b.fuel + b.maint + b.other) - (a.fuel + a.maint + a.other)).map(v => {
+    const o = v.odo.sort((a, b) => a.odo - b.odo), km = o.length > 1 ? o[o.length - 1].odo - o[0].odo : 0;
+    const fuelAfter = o.slice(1).reduce((s, x) => s + x.fuel, 0), lit = o.slice(1).reduce((s, x) => s + x.litres, 0);
+    const tot = v.fuel + v.maint + v.other;
+    return `<div class="card"><div class="body" style="display:grid;gap:8px">
+      <div class="x-ap-top"><div><b>${esc(v.name)}</b><small>${v.lines.length} entries${km ? ' · ' + km.toLocaleString() + ' km driven' : ''}</small></div><div class="x-ap-amt">AED ${aed(tot)}</div></div>
+      <div class="x-vat"><span>Fuel <b>${aed(v.fuel)}</b></span><span>Maintenance <b>${aed(v.maint)}</b></span>${v.other ? `<span>Other <b>${aed(v.other)}</b></span>` : ''}</div>
+      ${km ? `<div class="x-vat"><span>Fuel cost per km <b>AED ${(fuelAfter / km).toFixed(2)}</b></span>${lit ? `<span>Km per litre <b>${(km / lit).toFixed(1)}</b></span>` : ''}</div>`
+        : '<p class="hint" style="margin:0">Enter the odometer with each fuel entry (and quantity in litres, unit "L") to see cost per km and km per litre.</p>'}
+      <details><summary class="hint" style="cursor:pointer">Show entries</summary><div class="x-list" style="margin-top:8px">${v.lines.map(xRow).join('')}</div></details>
+    </div></div>`; }).join('');
+  xMain().innerHTML = `<div class="x-filt" style="grid-template-columns:1fr"><select id="xv-per"><option value="">All dates</option>${months.map(mm => `<option value="${mm}"${mm === per ? ' selected' : ''}>${new Date(mm + '-15T12:00').toLocaleString('en-GB', { month: 'long', year: 'numeric' })}</option>`).join('')}</select></div>
+    ${cards || '<div class="empty">No vehicle expenses yet. Choose the vehicle when entering fuel or vehicle maintenance.</div>'}
     <div class="x-save"><div><button class="btn sec" data-x="home">Back</button></div></div>`;
 }
 /* admin: close / reopen months (closed months cannot be changed) */
@@ -2190,6 +2342,23 @@ $('exp').addEventListener('click', async e => {
     catch (er) { toast(errText(er)); b.disabled = false; b.textContent = 'Save count'; }
     return;
   }
+  if ('xcostall' in D) { X.costSite = ''; return xGo('cost'); }
+  if (D.xsite) { X.costSite = D.xsite; xCost(); $('exp').scrollTop = 0; return; }
+  if ('xcostback' in D) { X.costSite = ''; xCost(); return; }
+  if ('xcostprint' in D) return xCostPrint();
+  if (b.id === 'xb-save') {
+    const cats = [...document.querySelectorAll('[data-xbcat]')].map(i => ({ cat: i.dataset.xbcat, budget: i.value }));
+    b.disabled = true; b.textContent = 'Saving…';
+    try { X.d = await server('expSaveBudget', X.costSite, $('xb-total').value, cats, X.pin); keep('exp.cache', X.d); toast('Budget saved'); xGo('cost'); }
+    catch (er) { toast(errText(er)); b.disabled = false; b.textContent = 'Save budget'; }
+    return;
+  }
+  if (b.id === 'xr-save') {
+    b.disabled = true;
+    try { X.d = await server('expSetRates', $('xr-sk').value, $('xr-us').value, X.pin); keep('exp.cache', X.d); toast('Day rates saved'); xBudget(); }
+    catch (er) { toast(errText(er)); b.disabled = false; }
+    return;
+  }
   if (D.xadv) { X.advSel = D.xadv; xAdv(); $('exp').scrollTop = 0; return; }
   if ('xadvback' in D) { X.advSel = ''; xAdv(); return; }
   if ('xadvprint' in D) return xAdvPrint();
@@ -2231,6 +2400,8 @@ $('exp').addEventListener('input', e => {
   if (t.dataset.xi && X.f) { const k = t.dataset.xi; X.f[k] = t.type === 'checkbox' ? t.checked : t.value;
     if (k === 'cat' || k === 'alloc' || k === 'vat' || (k === 'box' && X.f.type === 'TRANSFER')) { xForm(); return; } xLive(); return; }
   if (t.id === 'xc-box') { X.countBox = t.value; xCount(); return; }
+  if (t.id === 'xk-per') { X.costPer = t.value; xCost(); return; }
+  if (t.id === 'xv-per') { X.vehPer = t.value; xVeh(); return; }
   if (t.id === 'xc-amt') { const b = (X.d.balances[X.countBox] || { bal: 0 }).bal, diff = xr2(xr2(t.value) - b);
     $('xc-diff').innerHTML = t.value.trim() === '' ? '' : diff === 0 ? '<div class="x-vat" style="color:var(--ok)"><b>Matches – no difference.</b></div>'
       : `<div class="x-warn">${diff > 0 ? 'Extra' : 'Short'} by AED ${aed(Math.abs(diff))}. Write a note below.</div>`; return; }
