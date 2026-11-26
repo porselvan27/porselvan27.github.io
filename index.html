@@ -588,7 +588,7 @@ details.x-fold>div{padding:0 12px 12px}
 .dsr-sum b{color:var(--blue)}.dsr-sum ul{margin:4px 0 0;padding-left:18px}.dsr-sum .warn{color:var(--danger);font-weight:600}
 .rec-bill{grid-column:1/-1;font-size:12.5px;color:#a86a00;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .rec-bill .ok{color:var(--ok);font-weight:600}
-.linkbtn{border:0;background:none;color:var(--blue);font:inherit;font-weight:700;text-decoration:underline;cursor:pointer;padding:0}
+.linkbtn{border:0;background:none;color:var(--blue);font:inherit;font-weight:700;text-decoration:underline;cursor:pointer;padding:0;text-align:left}
 .x-scanbtn{width:100%;border:1.5px dashed color-mix(in srgb,var(--blue) 55%,transparent)!important;background:color-mix(in srgb,var(--blue) 7%,var(--card))!important;color:var(--blue)!important;font-weight:700}
 .x-lines{display:grid;gap:6px}
 .x-cbrow .body{display:grid;gap:8px;padding-top:12px}
@@ -1903,6 +1903,7 @@ function xGo(v){
   else if (v === 'cost') xCost(); else if (v === 'budget') xBudget(); else if (v === 'veh') xVeh();
   else if (v === 'bank') { if (was !== 'bank' && was !== 'detail' && was !== 'chqd') X.bankSel = ''; xBank(); } else if (v === 'chq') xChq();
   else if (v === 'docs') xDocs(); else if (v === 'sites') xSites(); else if (v === 'new') xNewMenu(); else if (v === 'site') xSitePage(X.siteCode);
+  else if (v === 'supp') xSupp(); else if (v === 'suppd') xSuppDetail(X.suppName); else if (v === 'brec') xBankRec(); else if (v === 'srec') xSuppRec();
   else if (v === 'miss') xMiss(); else if (v === 'sum') { if (was !== 'sum') { X.sum = {}; X.sumDate = today(); } xSum(); }
   $('exp').scrollTop = 0;
   if (X.deep) { const t = X.d.txns.find(x => x.voucher === X.deep); X.deep = ''; if (t) xDetail(t.id); else toast('Voucher not found or not visible to you'); }
@@ -1977,7 +1978,8 @@ function xHome(){
           xIsAdmin() ? tile('data-xnew="CLIENT RECEIPT"', '--i-wallet', 'Client paid us', 'Record a payment · prints receipt voucher') : '']) : '')
         + (xSeesAll() ? sec('Bank & cheques', [
           tile('data-x="bank"', '--i-grid', 'Bank', bb.length ? 'AED ' + aed(bb.reduce((s, b) => s + b.bal, 0)) + ' in ' + bb.length + ' account' + (bb.length > 1 ? 's' : '') : 'Add your bank account first'),
-          tile('data-x="chq"', '--i-file', 'Cheques', pch.length ? pch.length + ' not cleared' + (pch.filter(xChqDue).length ? ' · ' + pch.filter(xChqDue).length + ' due soon' : '') : 'Nothing waiting')]) : '')
+          tile('data-x="chq"', '--i-file', 'Cheques', pch.length ? pch.length + ' not cleared' + (pch.filter(xChqDue).length ? ' · ' + pch.filter(xChqDue).length + ' due soon' : '') : 'Nothing waiting'),
+          tile('data-x="supp"', '--i-users', 'Suppliers', 'Totals per supplier · check their statement')]) : '')
         + sec(xSeesAll() ? 'Cash' : 'My cash', [
           xCanAdd() && box ? tile('data-xnew="TRANSFER"', '--i-arrow', 'Give cash', 'Hand cash to a colleague') : '',
           box ? tile('data-x="count"', '--i-check', 'Count cash', cnt ? 'Last ' + dmy(cnt.date) + (cnt.diff ? ' · diff ' + aed(cnt.diff) : ' · OK') : 'Not counted yet') : '',
@@ -2415,7 +2417,7 @@ async function xSave(){
     X.d = await server('expSave', f, X.pin); keep('exp.cache', X.d);
     if (f.type === 'EXPENSE') keep('exp.last', { alloc: f.alloc, cat: f.cat });
     toast(f.id ? 'Changes saved' : ({ EXPENSE: 'Expense saved', 'CLIENT RECEIPT': 'Client receipt saved', BANK: 'Bank entry saved', TRANSFER: 'Handover sent', RECOVERY: 'Recovery saved' })[f.type] || 'Cash received saved');
-    X.f = null; xGo('home');
+    X.f = null; const rt = X.returnTo; X.returnTo = null; xGo(rt || 'home');
   } catch (e) {
     const m = errText(e);
     if (/^DUPLICATE\|/.test(m)) {                       // same date + party + amount already exists
@@ -2730,7 +2732,7 @@ function xBank(){
       <div class="x-list">${lines.map(l => `<button class="x-it" ${l.id && !/^chq:/.test(l.id) ? `data-xopen="${esc(l.id)}"` : l.id ? `data-xchq="${esc(l.id.slice(4))}"` : ''}><span class="ic ${l.amt > 0 ? 'in' : ''}">${l.amt > 0 ? 'IN' : 'OUT'}</span>
         <span class="t"><b>${esc(l.what)}</b><small>${esc(l.ref)} · ${dmy(l.date)}</small></span>
         <span class="a ${l.amt > 0 ? 'in' : 'out'}">${l.amt > 0 ? '+' : '−'}${aed(Math.abs(l.amt))}<br><small style="color:var(--muted);font-weight:500">bal ${aed(l.bal)}</small></span></button>`).join('') || '<div class="empty">No entries yet.</div>'}</div>
-      <div class="x-save"><div><button class="btn sec" data-xbankback>Back</button>${xIsAdmin() ? `<button class="btn sec" data-xbankedit="${esc(sel.name)}">Edit account</button><button class="btn" data-xnew="BANK">Bank entry</button>` : ''}</div></div>`;
+      <div class="x-save"><div><button class="btn sec" data-xbankback>Back</button>${xIsAdmin() ? `<button class="btn sec" data-xbankedit="${esc(sel.name)}">Edit</button><button class="btn sec" data-xnew="BANK">Bank entry</button>` : ''}<button class="btn" data-xbrstart="${esc(sel.name)}">Check statement</button></div></div>`;
     return;
   }
   const tot = list.reduce((s, b) => s + b.bal, 0);
@@ -3108,7 +3110,9 @@ function xNewMenu(){
     + (xIsAdmin() ? grp('Bank & cheques', [
       it('data-xchqscan="Received"', '▣', '', 'Scan client cheques', 'One or many cheques at once – they go to the cheque register'),
       it('data-xchqnew="Issued"', '✎', '', 'A cheque we wrote (not for an expense)', 'Security or deposit cheque'),
-      it('data-xnew="BANK"', 'BK', '', 'Bank deposit, transfer or charges', 'Cash put in the bank, money between accounts, bank fees')]) : '')
+      it('data-xnew="BANK"', 'BK', '', 'Bank deposit, transfer or charges', 'Cash put in the bank, money between accounts, bank fees'),
+      it('data-xnewstmt="bank"', '≡', '', 'Check bank statement', "Open the bank's Excel/CSV file – read on this phone only"),
+      it('data-xnewstmt="supplier"', '≡', '', 'Check supplier statement', 'Photo, PDF or Excel – finds missing bills and payments')]) : '')
     + (xIsAdmin() ? grp('Client documents', [
       it('data-xdocnew="CERT"', 'IPC', '', 'Payment certificate', 'Work done to date – its tax invoice is made automatically'),
       it('data-xdocnew="INV"', 'INV', '', 'Tax invoice only', 'For an advance or a payment without a certificate')]) : '')
@@ -3231,6 +3235,230 @@ function xSitePage(code){
   $('exp').scrollTop = 0;
 }
 
+/* =================== statements: bank (Excel/CSV read on the phone) · supplier (photo/PDF via Gemini, or Excel/CSV) =================== */
+/* --- read a CSV or XLSX file into rows of text, entirely on this phone (nothing is uploaded) --- */
+function xCsvRows(text){
+  const first = text.split(/\r?\n/).find(l => l.trim()) || '', d = [',', ';', '\t'].sort((a, b) => first.split(b).length - first.split(a).length)[0];
+  const rows = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) { const ch = text[i];
+    if (q) { if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += ch; continue; }
+    if (ch === '"') q = true; else if (ch === d) { row.push(cell); cell = ''; } else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; } else cell += ch; }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows.map(r => r.map(c => c.trim()));
+}
+async function xXlsxRows(buf){
+  const dv = new DataView(buf); let e = buf.byteLength - 22;
+  while (e >= 0 && dv.getUint32(e, true) !== 0x06054b50) e--;
+  if (e < 0) throw new Error('This is not an .xlsx file. In Excel use Save As → Excel Workbook (.xlsx) or CSV.');
+  const n = dv.getUint16(e + 10, true), files = {}; let p = dv.getUint32(e + 16, true);
+  for (let i = 0; i < n; i++) { const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true), nl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), lho = dv.getUint32(p + 42, true);
+    files[new TextDecoder().decode(new Uint8Array(buf, p + 46, nl))] = { method, csize, lho }; p += 46 + nl + xl + cl; }
+  const get = async name => { const f = files[name]; if (!f) return null;
+    const data = new Uint8Array(buf, f.lho + 30 + dv.getUint16(f.lho + 26, true) + dv.getUint16(f.lho + 28, true), f.csize);
+    if (f.method === 0) return new TextDecoder().decode(data);
+    return new TextDecoder().decode(await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer()); };
+  const P = s => new DOMParser().parseFromString(s, 'application/xml');
+  const ssx = await get('xl/sharedStrings.xml'), ss = ssx ? [...P(ssx).getElementsByTagName('si')].map(si => [...si.getElementsByTagName('t')].map(t => t.textContent).join('')) : [];
+  const sheet = Object.keys(files).filter(k => /^xl\/worksheets\/sheet\d+\.xml$/.test(k)).sort((a, b) => parseInt(a.match(/\d+/)) - parseInt(b.match(/\d+/)))[0];
+  if (!sheet) throw new Error('No sheet found in this Excel file.');
+  const col = r => { const m = String(r).match(/^[A-Z]+/); return m ? m[0].split('').reduce((s, ch) => s * 26 + ch.charCodeAt(0) - 64, 0) - 1 : 0; };
+  return [...P(await get(sheet)).getElementsByTagName('row')].map(rw => { const out = [];
+    [...rw.getElementsByTagName('c')].forEach(c => { const t = c.getAttribute('t'), v = c.getElementsByTagName('v')[0];
+      out[col(c.getAttribute('r'))] = t === 's' ? (ss[+(v && v.textContent)] || '') : t === 'inlineStr' ? [...c.getElementsByTagName('t')].map(x => x.textContent).join('') : (v ? v.textContent : ''); });
+    return Array.from(out, x => String(x == null ? '' : x).trim()); });
+}
+async function xReadTable(file){
+  if (/\.xls$/i.test(file.name)) throw new Error('Old .xls file – open it in Excel and Save As .xlsx or CSV, then choose that file.');
+  if (/\.xlsx$/i.test(file.name) || /spreadsheetml/.test(file.type)) return xXlsxRows(await file.arrayBuffer());
+  return xCsvRows(await file.text());
+}
+/* --- turn a table into statement lines: finds the header row and the columns by their names --- */
+const XMON = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+function xParseDate(v){
+  v = String(v || '').trim(); if (!v) return '';
+  if (/^\d{5}(\.\d+)?$/.test(v) && +v > 30000 && +v < 70000) return new Date(Date.UTC(1899, 11, 30) + Math.floor(+v) * 864e5).toISOString().slice(0, 10);
+  let m = v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if (m) return m[1] + '-' + xPad(m[2], 2) + '-' + xPad(m[3], 2);
+  m = v.match(/^(\d{1,2})[\/\-. ]([A-Za-z]{3,}|\d{1,2})[\/\-. ,]+(\d{2,4})/); if (!m) return '';
+  const mo = /\d/.test(m[2]) ? +m[2] : XMON[m[2].slice(0, 3).toLowerCase()], yr = m[3].length === 2 ? '20' + m[3] : m[3];
+  return mo && +m[1] <= 31 ? yr + '-' + xPad(mo, 2) + '-' + xPad(m[1], 2) : '';
+}
+const xMoney = v => { let s = String(v == null ? '' : v).trim(); if (!s) return 0; const neg = /^\(.*\)$/.test(s) || /^-/.test(s) || /\bdr\b/i.test(s);
+  s = s.replace(/[^\d.]/g, ''); const n = parseFloat(s) || 0; return xr2(neg ? -n : n); };
+function xParseStatement(rows){
+  const hi = rows.slice(0, 40).findIndex(r => r.some(c => /date/i.test(c)) && r.some(c => /debit|credit|withdraw|deposit|amount|paid|receipt/i.test(c)));
+  if (hi < 0) throw new Error('Could not find the column titles (Date, Debit, Credit…) in this file.');
+  const H = rows[hi].map(c => String(c || '').toLowerCase()), find = (re, not) => H.findIndex(h => re.test(h) && !(not && not.test(h)));
+  let cDate = find(/(transaction|txn|posting|trans).*date|^date$/); if (cDate < 0) cDate = find(/date/, /value/); if (cDate < 0) cDate = find(/date/);
+  const cDesc = find(/desc|narrat|detail|particular|remark|transaction$/), cRef = find(/ref|cheque|chq|doc|invoice|voucher|inv\.? ?no/, /date/);
+  const cDr = find(/debit|withdraw|money out|paid out|^dr\b|invoice amount/), cCr = find(/credit|deposit|money in|paid in|^cr\b|receipt/, /card/);
+  const cAmt = find(/amount/, /debit|credit|balance/), cSign = find(/dr\s*\/\s*cr|cr\s*\/\s*dr|^type$|^dr\/cr$/), cBal = find(/balance/);
+  const lines = []; let opening = null, closing = null;
+  rows.slice(hi + 1).forEach(r => {
+    const desc = cDesc >= 0 ? r[cDesc] || '' : '', date = xParseDate(r[cDate]), bal = cBal >= 0 && r[cBal] !== '' && r[cBal] != null ? xMoney(r[cBal]) : null;
+    if (/opening|brought forward|b\/f|balance forward/i.test(desc + ' ' + (r[cDate] || ''))) { if (bal != null) opening = bal; return; }
+    if (!date) return;
+    let dr = cDr >= 0 ? Math.abs(xMoney(r[cDr])) : 0, cr = cCr >= 0 ? Math.abs(xMoney(r[cCr])) : 0;
+    if (cDr < 0 && cCr < 0 && cAmt >= 0) { const a = xMoney(r[cAmt]), dc = cSign >= 0 ? String(r[cSign] || '').toLowerCase() : '';
+      if (/d/.test(dc) || (!dc && a < 0)) dr = Math.abs(a); else cr = Math.abs(a); }
+    if (!dr && !cr) return;
+    const ref = cRef >= 0 ? r[cRef] || '' : '', chq = (String(ref).match(/\b\d{6}\b/) || String(desc).match(/(?:chq|cheque|clg|clearing)\D{0,6}(\d{6})/i) || [])[1] || (String(ref).match(/\b\d{6}\b/) || [])[0] || '';
+    lines.push({ date, desc: String(desc).trim(), ref: String(ref).trim(), docNo: String(ref).trim(), chequeNo: chq, debit: xr2(dr), credit: xr2(cr), balance: bal });
+    if (bal != null) closing = bal; });
+  if (!lines.length) throw new Error('No transaction lines found under the column titles.');
+  const ds = lines.map(l => l.date).sort();
+  return { lines, opening, closing, from: ds[0], to: ds[ds.length - 1] };
+}
+const xStmtFile = Object.assign(document.createElement('input'), { type: 'file', accept: '.csv,.xlsx,.xls,.txt,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', hidden: true });
+const xStmtScan = Object.assign(document.createElement('input'), { type: 'file', accept: 'image/*,application/pdf', multiple: true, hidden: true });
+document.body.append(xStmtFile, xStmtScan);
+xStmtFile.onchange = async () => {
+  const file = xStmtFile.files[0]; xStmtFile.value = ''; if (!file) return;
+  try { const st = xParseStatement(await xReadTable(file)); st.file = file.name;
+    if (X.stmtFor === 'bank') { Object.assign(X.br, st); X.view = 'brec'; xBankRec(); }
+    else { Object.assign(X.sr, st, { source: 'file' }); X.view = 'srec'; xSuppRec(); }
+    toast(st.lines.length + ' lines read from ' + file.name); }
+  catch (er) { toast(errText(er)); }
+};
+xStmtScan.onchange = async () => {
+  const files = [...xStmtScan.files]; xStmtScan.value = ''; if (!files.length) return;
+  const sr = X.sr; sr.lines = []; sr.opening = null; sr.closing = null; sr.busy = files.length; sr.source = 'scan'; X.view = 'srec'; xSuppRec();
+  for (const f of files) {
+    try {
+      const src = /pdf/.test(f.type) ? await new Promise((res, rej) => { if (f.size > 8e6) return rej(new Error('PDF is too big (over 8 MB)')); const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f); })
+        : await shrink(f, 2400, 0.85);
+      const r = await server('expScanSupplierStatement', src, X.pin), o = r.data;
+      if (!o) { toast('A page could not be read: ' + (r.note || '')); }
+      else { (o.lines || []).forEach(l => { const date = xParseDate(l.date); if (date && (+l.debit || +l.credit)) sr.lines.push({ date, docNo: String(l.docNo || ''), desc: String(l.desc || ''), debit: xr2(Math.abs(+l.debit || 0)), credit: xr2(Math.abs(+l.credit || 0)) }); });
+        if (sr.opening == null && o.opening !== '' && o.opening != null) sr.opening = xr2(o.opening); if (o.closing !== '' && o.closing != null && +o.closing) sr.closing = xr2(o.closing);
+        if (o.supplier) sr.stmtName = o.supplier; }
+    } catch (er) { toast('A page failed: ' + errText(er)); }
+    sr.busy--; if (X.view === 'srec') xSuppRec();
+  }
+  const ds = sr.lines.map(l => l.date).sort(); sr.from = ds[0]; sr.to = ds[ds.length - 1];
+  if (X.view === 'srec') xSuppRec();
+};
+
+/* --- bank statement check --- */
+function xBankMatch(){
+  const br = X.br, b = xBankBook().B[br.bank]; if (!b) return null;
+  const used = new Set(), cUsed = new Set(), noz = s => String(s || '').replace(/^0+/, '');
+  const pend = (X.d.cheques || []).filter(c => XCHQ_PEND.test(c.status) && (c.account === br.bank || (!c.account && c.dir === 'Received')));
+  const res = br.lines.map(s => { const amt = xr2(s.credit - s.debit), out = amt < 0;
+    let c = pend.find(c => !cUsed.has(c.id) && s.chequeNo && noz(c.no) === noz(s.chequeNo) && Math.abs(c.amount - Math.abs(amt)) < 0.01 && (c.dir === 'Issued') === out);
+    if (c) { cUsed.add(c.id); return { s, amt, st: 'chq', c }; }
+    const l = b.lines.find((l, i) => !used.has(i) && Math.abs(l.amt - amt) < 0.01 && Math.abs(xDaysBetween(l.date, s.date)) <= 7 && used.add(i));
+    if (l) return { s, amt, st: 'ok', l };
+    c = pend.find(c => !cUsed.has(c.id) && Math.abs(c.amount - Math.abs(amt)) < 0.01 && (c.dir === 'Issued') === out && Math.abs(xDaysBetween(c.date, s.date)) <= 30);
+    if (c) { cUsed.add(c.id); return { s, amt, st: 'chq', c, guess: true }; }
+    return { s, amt, st: 'miss', kind: out ? (/charge|fee|commission|vat|chq ?book|cheque ?book|sms|stamp|service/i.test(s.desc) ? 'charge' : 'out') : 'in' }; });
+  const appOnly = b.lines.filter((l, i) => !used.has(i) && l.date >= br.from && l.date <= br.to);
+  const appBal = b.balAt(br.to), diff = br.closing != null ? xr2(br.closing - appBal) : null;
+  return { b, res, appOnly, appBal, diff };
+}
+function xBankRec(){
+  const br = X.br, M = xBankMatch(); if (!M) { toast('Choose the bank account'); return xGo('bank'); }
+  const by = k => M.res.filter(r => r.st === k), ok = by('ok'), chq = by('chq'), miss = by('miss'), charges = miss.filter(r => r.kind === 'charge');
+  const it = (r, btn) => `<div class="x-it" style="cursor:default"><span class="ic ${r.amt > 0 ? 'in' : ''}">${r.amt > 0 ? 'IN' : 'OUT'}</span>
+    <span class="t"><b>${esc(r.s.desc || r.s.ref || '–')}</b><small>${dmy(r.s.date)}${r.s.ref ? ' · ' + esc(r.s.ref) : ''}${r.c ? ' · cheque ' + esc(r.c.no) + ' ' + esc(r.c.party) + (r.guess ? ' (same amount)' : '') : ''}${r.l ? ' · ' + esc(r.l.ref) : ''}</small>${btn || ''}</span>
+    <span class="a ${r.amt > 0 ? 'in' : 'out'}">${r.amt > 0 ? '+' : '−'}${aed(Math.abs(r.amt))}</span></div>`;
+  xMain().innerHTML = `<div class="x-sp-head"><small>BANK STATEMENT CHECK · ${esc(br.bank.toUpperCase())}</small><h2>${dmy(br.from)} – ${dmy(br.to)}</h2>
+      <div>${br.lines.length} lines from ${esc(br.file || 'the file')} · read on this phone only</div></div>
+    <div class="x-stats"><div><b>${br.closing != null ? aed(br.closing) : '–'}</b><small>Statement balance</small></div><div><b>${aed(M.appBal)}</b><small>App balance ${dmy(br.to)}</small></div>
+      <div><b class="${M.diff ? 'neg' : ''}">${M.diff == null ? '–' : M.diff ? aed(M.diff) : '✓ 0.00'}</b><small>Difference</small></div></div>
+    <div class="x-tot" style="margin-top:10px"><span style="color:var(--ok)">${ok.length} matched</span><span>${chq.length} cheques cleared</span><span style="color:var(--danger)">${miss.length} not in app</span><span>${M.appOnly.length} not on statement</span></div>
+    ${xIsAdmin() && (chq.length || charges.length) ? `<div class="x-big" style="margin:4px 0 12px">${chq.length ? `<button class="in" data-xbrchq>Mark ${chq.length} cheque${chq.length > 1 ? 's' : ''} Cleared<small>On the statement dates</small></button>` : ''}
+      ${charges.length ? `<button class="out" data-xbrchg>Add ${charges.length} bank charge${charges.length > 1 ? 's' : ''}<small>AED ${aed(charges.reduce((s, r) => s - r.amt, 0))}</small></button>` : ''}</div>` : ''}
+    ${miss.length ? `<div class="x-sec">On the statement, not in the app</div><div class="x-list">${miss.map(r => it(r, xIsAdmin() ? `<br><button class="linkbtn" data-xbradd="${M.res.indexOf(r)}">${r.kind === 'charge' ? 'Add bank charge' : r.kind === 'in' ? 'Add client payment / income' : 'Add payment'}</button>` : '')).join('')}</div>` : ''}
+    ${chq.length ? `<div class="x-sec">Cheques that cleared</div><div class="x-list">${chq.map(r => it(r)).join('')}</div>` : ''}
+    ${M.appOnly.length ? `<div class="x-sec">In the app, not on the statement</div><p class="hint" style="margin:0 0 6px">Wrong amount or date in the app, or not yet through the bank.</p>
+      <div class="x-list">${M.appOnly.map(l => `<button class="x-it" ${l.id && !/^chq:/.test(l.id) ? `data-xopen="${esc(l.id)}"` : ''}><span class="ic ${l.amt > 0 ? 'in' : ''}">${l.amt > 0 ? 'IN' : 'OUT'}</span><span class="t"><b>${esc(l.what)}</b><small>${esc(l.ref)} · ${dmy(l.date)}</small></span><span class="a ${l.amt > 0 ? 'in' : 'out'}">${l.amt > 0 ? '+' : '−'}${aed(Math.abs(l.amt))}</span></button>`).join('')}</div>` : ''}
+    ${ok.length ? `<details class="x-fold"><summary>Matched<span>${ok.length} lines</span></summary><div><div class="x-list">${ok.map(r => it(r)).join('')}</div></div></details>` : ''}
+    <div class="x-save"><div><button class="btn sec" data-xbrback>Back</button><button class="btn sec" data-xbrprint>Print</button>${xIsAdmin() && br.closing != null ? '<button class="btn ok" data-xbrsave>Save statement balance</button>' : ''}</div></div>`;
+  $('exp').scrollTop = 0;
+}
+function xBankRecPrint(){
+  const br = X.br, M = xBankMatch(), miss = M.res.filter(r => r.st === 'miss');
+  const row = (d, t, a) => `<tr><td>${dmy(d)}</td><td>${esc(t)}</td><td class="n">${a < 0 ? '(' + aed(-a) + ')' : aed(a)}</td></tr>`;
+  lhPrint('BANK RECONCILIATION', [['Account', esc(br.bank)], ['Period', dmy(br.from) + ' – ' + dmy(br.to)], ['Printed', dmy(today())]],
+    `${lhTot([['Balance as per bank statement', br.closing != null ? aed(br.closing) : '–'], ['Balance as per Al Tarwi app', aed(M.appBal)], ['Difference', M.diff == null ? '–' : aed(M.diff), 'grand']])}
+    <div class="lh-sec">On the bank statement, not in the app</div><table class="lh-tb"><tr><th>Date</th><th>Details</th><th class="n">Amount (AED)</th></tr>${miss.map(r => row(r.s.date, r.s.desc + (r.s.ref ? ' · ' + r.s.ref : ''), r.amt)).join('') || '<tr><td colspan="3">None</td></tr>'}</table>
+    <div class="lh-sec">In the app, not on the bank statement</div><table class="lh-tb"><tr><th>Date</th><th>Details</th><th class="n">Amount (AED)</th></tr>${M.appOnly.map(l => row(l.date, l.what + ' · ' + l.ref, l.amt)).join('') || '<tr><td colspan="3">None</td></tr>'}</table>
+    <div class="lh-sec">Cheques cleared on the statement</div><table class="lh-tb"><tr><th>Date</th><th>Cheque</th><th class="n">Amount (AED)</th></tr>${M.res.filter(r => r.st === 'chq').map(r => row(r.s.date, 'Cheque ' + r.c.no + ' · ' + r.c.party, r.amt)).join('') || '<tr><td colspan="3">None</td></tr>'}</table>
+    ${lhSig([['Prepared by', X.d.user.name], ['Checked by', ''], ['Approved by', '']])}`);
+}
+
+/* --- suppliers --- */
+function xSuppliers(){
+  const m = {};
+  (X.d.parties || []).forEach(p => { m[xKey(p.name)] = { name: p.name, trn: p.trn, type: p.type, n: 0, total: 0, last: '' }; });
+  X.d.txns.forEach(t => { if (t.type !== 'EXPENSE' || !xLiveTx(t) || !String(t.party || '').trim()) return;
+    const k = xKey(t.party), s = m[k] || (m[k] = { name: t.party, trn: t.trn, n: 0, total: 0, last: '' }); s.n++; s.total = xr2(s.total + t.amount); if (t.date > s.last) s.last = t.date; });
+  return Object.values(m);
+}
+const xSuppEntries = name => X.d.txns.filter(t => t.type === 'EXPENSE' && xLiveTx(t) && (xKey(t.party) === xKey(name) || xSameParty(name, t.party))).sort((a, b) => b.date.localeCompare(a.date));
+function xSupp(){
+  const q = (X.suppQ || '').toLowerCase(), list = xSuppliers().filter(s => !q || s.name.toLowerCase().includes(q)).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+  xMain().innerHTML = `<input data-xsuppq value="${esc(X.suppQ || '')}" placeholder="Search supplier…" aria-label="Search supplier" style="margin-bottom:10px">
+    <div class="x-list">${list.map(s => `<button class="x-it" data-xsuppd="${esc(s.name)}"><span class="ic">${esc(s.name.replace(/[^A-Za-z]/g, '').slice(0, 2).toUpperCase())}</span>
+      <span class="t"><b>${esc(s.name)}</b><small>${s.n} entr${s.n === 1 ? 'y' : 'ies'}${s.last ? ' · last ' + dmy(s.last) : ''}${s.trn ? ' · TRN ' + esc(s.trn) : ''}</small></span><span class="a">${aed(s.total)}</span></button>`).join('') || '<div class="empty">No suppliers yet.</div>'}</div>
+    <div class="x-save"><div><button class="btn sec" data-x="home">Back</button></div></div>`;
+}
+function xSuppDetail(name){
+  X.view = 'suppd'; X.suppName = name;
+  const e = xSuppEntries(name), tot = e.reduce((s, t) => s + t.amount, 0), p = (X.d.parties || []).find(x => xKey(x.name) === xKey(name));
+  xMain().innerHTML = `<div class="x-sp-head"><small>SUPPLIER${p && p.type ? ' · ' + esc(p.type).toUpperCase() : ''}</small><h2>${esc(name)}</h2><div>${p && p.trn ? 'TRN ' + esc(p.trn) + ' · ' : ''}${e.length} entries · AED ${aed(tot)} in the app</div></div>
+    ${xSeesAll() ? `<div class="x-big"><button class="out" data-xsscan>Scan statement<small>Photo or PDF</small></button><button class="in" data-xsfile>Open Excel / CSV<small>Statement file</small></button></div>` : ''}
+    <div class="x-sec">Entries in the app</div><div class="x-list">${e.slice(0, 30).map(xRow).join('') || '<div class="empty">None.</div>'}</div>
+    <div class="x-save"><div><button class="btn sec" data-x="supp">Back</button></div></div>`;
+  $('exp').scrollTop = 0;
+}
+function xSuppMatch(){
+  const sr = X.sr, E = xSuppEntries(sr.party).slice().reverse(), uA = new Set(), uB = new Set();
+  const digits = s => String(s || '').replace(/\D/g, '');
+  const res = sr.lines.map(s => {
+    if (s.debit > 0) { const dn = digits(s.docNo);
+      const e = E.find(t => !uA.has(t.id) && ((dn.length >= 3 && [t.desc, t.ref, t.remarks, t.item].some(x => digits(x).includes(dn)) && Math.abs(t.amount - s.debit) <= Math.max(1, s.debit * 0.01))
+        || (Math.abs(t.amount - s.debit) <= 1 && Math.abs(xDaysBetween(s.date, t.date)) <= 20)));
+      if (e) { uA.add(e.id); return { s, kind: 'bill', st: 'ok', e }; }
+      return { s, kind: 'bill', st: 'miss' }; }
+    const e = E.find(t => !uB.has(t.id) && Math.abs(t.amount - s.credit) <= 1 && Math.abs(xDaysBetween(s.date, t.date)) <= 30);
+    if (e) { uB.add(e.id); return { s, kind: 'pay', st: 'ok', e }; }
+    return { s, kind: 'pay', st: 'miss' }; });
+  const appOnly = E.filter(t => !uA.has(t.id) && !uB.has(t.id) && (!sr.from || t.date >= sr.from) && (!sr.to || t.date <= sr.to));
+  return { res, appOnly };
+}
+function xSuppRec(){
+  const sr = X.sr, M = xSuppMatch(), bills = M.res.filter(r => r.kind === 'bill'), pays = M.res.filter(r => r.kind === 'pay');
+  const missB = bills.filter(r => r.st === 'miss'), missP = pays.filter(r => r.st === 'miss'), ok = M.res.filter(r => r.st === 'ok');
+  const sum = a => a.reduce((s, r) => s + (r.s.debit || r.s.credit), 0);
+  const it = (r, btn) => `<div class="x-it" style="cursor:default"><span class="ic ${r.kind === 'pay' ? 'in' : ''}">${r.kind === 'pay' ? 'PAY' : 'INV'}</span>
+    <span class="t"><b>${esc(r.s.desc || (r.kind === 'pay' ? 'Payment' : 'Invoice'))}${r.s.docNo ? ' · ' + esc(r.s.docNo) : ''}</b><small>${dmy(r.s.date)}${r.e ? ' · matches ' + esc(r.e.voucher) : ''}</small>${btn || ''}</span>
+    <span class="a">${aed(r.s.debit || r.s.credit)}</span></div>`;
+  xMain().innerHTML = `<div class="x-sp-head"><small>SUPPLIER STATEMENT CHECK</small><h2>${esc(sr.party)}</h2>
+      <div>${sr.busy ? 'Reading ' + sr.busy + ' page' + (sr.busy > 1 ? 's' : '') + '…' : sr.lines.length + ' lines' + (sr.from ? ' · ' + dmy(sr.from) + ' – ' + dmy(sr.to) : '') + (sr.source === 'file' ? ' · read on this phone' : ' · read from the photo – check the amounts')}</div></div>
+    <div class="x-stats"><div><b>${aed(sum(bills))}</b><small>Invoices on statement</small></div><div><b>${aed(sum(pays))}</b><small>Payments on statement</small></div>
+      <div><b class="${sr.closing > 0 ? 'neg' : ''}">${sr.closing != null ? aed(sr.closing) : '–'}</b><small>Supplier says you owe</small></div></div>
+    <div class="x-tot" style="margin-top:10px"><span style="color:var(--ok)">${ok.length} matched</span><span style="color:var(--danger)">${missB.length} bills not in app</span><span>${missP.length} payments not found</span><span>${M.appOnly.length} not on statement</span></div>
+    ${missB.length ? `<div class="x-sec">Bills on the statement, not in the app · AED ${aed(sum(missB))}</div><p class="hint" style="margin:0 0 6px">Not entered yet, or bought on credit and still to pay.</p>
+      <div class="x-list">${missB.map(r => it(r, xCanAdd() ? `<br><button class="linkbtn" data-xsradd="${M.res.indexOf(r)}">Add bill</button>` : '')).join('')}</div>` : ''}
+    ${missP.length ? `<div class="x-sec">Payments the supplier shows, not found in the app</div><div class="x-list">${missP.map(r => it(r)).join('')}</div>` : ''}
+    ${M.appOnly.length ? `<div class="x-sec">In the app, not on the supplier's statement</div><p class="hint" style="margin:0 0 6px">Ask the supplier to check these – or the entry has the wrong supplier.</p><div class="x-list">${M.appOnly.map(xRow).join('')}</div>` : ''}
+    ${ok.length ? `<details class="x-fold"><summary>Matched<span>${ok.length} lines</span></summary><div><div class="x-list">${ok.map(r => it(r)).join('')}</div></div></details>` : ''}
+    <div class="x-save"><div><button class="btn sec" data-xsrback>Back</button><button class="btn sec" data-xsrprint>Print for supplier</button></div></div>`;
+  $('exp').scrollTop = 0;
+}
+function xSuppRecPrint(){
+  const sr = X.sr, M = xSuppMatch(), missB = M.res.filter(r => r.kind === 'bill' && r.st === 'miss'), missP = M.res.filter(r => r.kind === 'pay' && r.st === 'miss');
+  const tb = (rows, cols) => `<table class="lh-tb"><tr>${cols.map(c => `<th${/AED/.test(c) ? ' class="n"' : ''}>${c}</th>`).join('')}</tr>${rows || `<tr><td colspan="${cols.length}">None</td></tr>`}</table>`;
+  lhPrint('STATEMENT RECONCILIATION', [['Supplier', esc(sr.party)], ['Period', sr.from ? dmy(sr.from) + ' – ' + dmy(sr.to) : ''], ['Date', dmy(today())]],
+    `<p class="lh-note">Dear ${esc(sr.party)}, we have checked your statement of account against our records. Please review the differences below.</p>
+    ${lhTot([['Balance as per your statement', sr.closing != null ? aed(sr.closing) : '–'], ['Invoices on your statement not in our records', aed(missB.reduce((s, r) => s + r.s.debit, 0))], ['Payments by us not shown on your statement', aed(M.appOnly.reduce((s, t) => s + t.amount, 0)), 'grand']])}
+    <div class="lh-sec">Invoices on your statement – not found in our records (please send copies)</div>${tb(missB.map(r => `<tr><td>${dmy(r.s.date)}</td><td>${esc(r.s.docNo)}</td><td>${esc(r.s.desc)}</td><td class="n">${aed(r.s.debit)}</td></tr>`).join(''), ['Date', 'Doc No.', 'Details', 'AED'])}
+    <div class="lh-sec">Our payments / bills – not shown on your statement</div>${tb(M.appOnly.map(t => `<tr><td>${dmy(t.date)}</td><td>${esc(t.voucher)}</td><td>${esc([t.item, t.method, t.chqNo ? 'Chq ' + t.chqNo : ''].filter(Boolean).join(' · '))}</td><td class="n">${aed(t.amount)}</td></tr>`).join(''), ['Date', 'Our ref.', 'Details', 'AED'])}
+    ${missP.length ? `<div class="lh-sec">Payments on your statement – not found in our records</div>${tb(missP.map(r => `<tr><td>${dmy(r.s.date)}</td><td>${esc(r.s.docNo)}</td><td>${esc(r.s.desc)}</td><td class="n">${aed(r.s.credit)}</td></tr>`).join(''), ['Date', 'Doc No.', 'Details', 'AED'])}` : ''}
+    ${lhSig([['For Al Tarwi Building Contracting', X.d.user.name], ['Confirmed by supplier', 'Name, signature & stamp']])}`);
+}
+
 /* ---------- events ---------- */
 $('exp').addEventListener('click', async e => {
   const b = e.target.closest('button,[data-x]'); if (!b) return;
@@ -3265,6 +3493,39 @@ $('exp').addEventListener('click', async e => {
     catch (er) { toast(errText(er)); b.disabled = false; b.textContent = 'Save count'; }
     return;
   }
+  /* ----- statements ----- */
+  if (D.xbrstart != null) { X.br = { bank: D.xbrstart || X.bankSel, lines: [] }; X.stmtFor = 'bank'; xStmtFile.click(); return; }
+  if ('xbrback' in D) { X.bankSel = X.br.bank; X.view = 'bank'; xBank(); return; }
+  if ('xbrprint' in D) return xBankRecPrint();
+  if ('xbrsave' in D) { try { const bk = (X.d.banks || []).find(x => x.name === X.br.bank);
+      X.d = await server('expSaveBank', { old: bk.name, name: bk.name, accNo: bk.accNo, opening: bk.opening, date: bk.date, stmt: X.br.closing, stmtDate: X.br.to }, X.pin); keep('exp.cache', X.d);
+      toast('Statement balance saved'); xBankRec(); } catch (er) { toast(errText(er)); } return; }
+  if ('xbrchq' in D) { const list = xBankMatch().res.filter(r => r.st === 'chq');
+    if (!await ask(`Mark ${list.length} cheque(s) as Cleared on the statement dates?\n\n${list.map(r => r.c.no + ' · ' + r.c.party + ' · ' + aed(r.c.amount)).join('\n')}`, 'Mark cleared')) return;
+    b.disabled = true; let n = 0;
+    for (const r of list) { try { X.d = await server('expChequeStatus', r.c.id, 'Cleared', r.s.date, X.br.bank, 'From bank statement', X.pin); n++; } catch (er) { toast(errText(er)); } }
+    keep('exp.cache', X.d); toast(n + ' cheques cleared'); xBankRec(); return; }
+  if ('xbrchg' in D) { const list = xBankMatch().res.filter(r => r.st === 'miss' && r.kind === 'charge');
+    if (!await ask(`Add ${list.length} bank charge(s), AED ${aed(list.reduce((s, r) => s - r.amt, 0))} in total, to ${X.br.bank}?`, 'Add charges')) return;
+    b.disabled = true; let n = 0;
+    for (const r of list) { try { X.d = await server('expSave', { type: 'BANK', source: 'Bank charges', bank: X.br.bank, amount: xr2(-r.amt), date: r.s.date, ref: r.s.ref, remarks: r.s.desc, receipts: [] }, X.pin); n++; } catch (er) { toast(errText(er)); } }
+    keep('exp.cache', X.d); toast(n + ' bank charges added'); xBankRec(); return; }
+  if (D.xbradd != null) { const r = xBankMatch().res[+D.xbradd], amt = Math.abs(r.amt).toFixed(2);
+    X.preRec = r.kind === 'charge' ? { source: 'Bank charges', bank: X.br.bank, amount: amt, date: r.s.date, ref: r.s.ref, remarks: r.s.desc }
+      : r.kind === 'in' ? { method: 'Bank transfer', bank: X.br.bank, amount: amt, date: r.s.date, ref: r.s.ref, remarks: r.s.desc }
+      : { method: 'Bank transfer', bank: X.br.bank, amount: amt, date: r.s.date, ref: r.s.ref, desc: r.s.desc };
+    X.returnTo = 'brec'; return xNew(r.kind === 'charge' ? 'BANK' : r.kind === 'in' ? 'CLIENT RECEIPT' : 'EXPENSE'); }
+  if (D.xsuppd) return xSuppDetail(D.xsuppd);
+  if ('xsscan' in D) { X.sr = { party: X.suppName, lines: [] }; xStmtScan.click(); return; }
+  if ('xsfile' in D) { X.sr = { party: X.suppName, lines: [] }; X.stmtFor = 'supplier'; xStmtFile.click(); return; }
+  if (D.xsradd != null) { const r = xSuppMatch().res[+D.xsradd];
+    X.preRec = { party: X.sr.party, date: r.s.date, amount: r.s.debit.toFixed(2), desc: (r.s.docNo ? 'Bill No. ' + r.s.docNo : r.s.desc).trim(), item: r.s.desc };
+    X.returnTo = 'srec'; return xNew('EXPENSE'); }
+  if ('xsrback' in D) return xSuppDetail(X.sr.party);
+  if ('xsrprint' in D) return xSuppRecPrint();
+  if (D.xnewstmt) { if (D.xnewstmt === 'bank') { const bn = xBankNames(); if (bn.length === 1) { X.br = { bank: bn[0], lines: [] }; X.stmtFor = 'bank'; xStmtFile.click(); }
+      else { X.bankSel = ''; xGo('bank'); toast(bn.length ? 'Open the account, then tap Check statement' : 'Add your bank account first'); } }
+    else { xGo('supp'); toast('Choose the supplier, then scan or open the statement'); } return; }
   /* ----- easy mode ----- */
   if ('xscanbill' in D) { xNew('EXPENSE'); X.scanKind = 'bill'; xScanIn.click(); return; }
   if (D.xsitep) { X.siteCode = D.xsitep; return xGo('site'); }
@@ -3415,7 +3676,7 @@ $('exp').addEventListener('click', async e => {
   }
   if (D.xopen) return xDetail(D.xopen);
   if (D.xedit) return xNew(null, X.d.txns.find(t => t.id === D.xedit));
-  if ('xback' in D) { X.f = null; return xGo('home'); }
+  if ('xback' in D) { X.f = null; const rt = X.returnTo; X.returnTo = null; return xGo(rt || 'home'); }
   if (D.xcancel) {
     const t = X.d.txns.find(x => x.id === D.xcancel);
     const reason = prompt(`Cancel ${t.voucher}? The voucher number is kept and marked Cancelled.\n\nWrite the reason:`);
@@ -3458,6 +3719,7 @@ $('exp').addEventListener('input', e => {
   if (t.dataset.xdl && X.df) { const [i, k] = t.dataset.xdl.split('|'), l = X.df.lines[+i]; l[k] = t.value;
     if (X.df.kind === 'INV' && (k === 'qty' || k === 'rate') && xr2(l.qty) && xr2(l.rate)) { l.amount = xr2(xr2(l.qty) * xr2(l.rate)).toFixed(2); const a = document.querySelector(`[data-xdl="${i}|amount"]`); if (a) a.value = l.amount; }
     xDocCalc(); return; }
+  if ('xsuppq' in t.dataset) { X.suppQ = t.value; clearTimeout(X._sq); X._sq = setTimeout(() => { xSupp(); const q = document.querySelector('[data-xsuppq]'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 300); return; }
   if (t.id === 'xs-date') { if (t.value && t.value <= today()) { X.sumDate = t.value; xSum(); } return; }
   if (t.id === 'xk-per') { X.costPer = t.value; xCost(); return; }
   if (t.id === 'xv-per') { X.vehPer = t.value; xVeh(); return; }
