@@ -2619,16 +2619,59 @@ function lhPrint(title, meta, body, opt = {}){
     #sheet .lh-sec{font:800 7.6pt 'Segoe UI',Arial;letter-spacing:.12em;color:#1D7FD1;text-transform:uppercase;margin:4mm 0 1.5mm}
     #sheet .lh-tb tr,#sheet .lh-sig,#sheet .lh-tot{break-inside:avoid}
     #sheet .lh-h{margin-bottom:-4mm}
-    ${opt.a5 ? '@page{size:A5 portrait;margin:0} #sheet .lh{zoom:.7048}' : ''}
+    #sheet .lh-mf{position:fixed;left:0;bottom:0;width:210mm;background:linear-gradient(90deg,#1D7FD1,#38b6ff 40%,#1F2A6B);padding-top:1.1mm;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    #sheet .lh-mf-in{background:linear-gradient(120deg,#141c4d,#1F2A6B 55%,#22358a);color:#e8f0ff;display:flex;align-items:center;justify-content:space-between;gap:4mm;padding:3mm 14mm;font-size:8pt}
+    #sheet .lh-mf-in span{display:inline-flex;align-items:center;gap:1.4mm;white-space:nowrap}
+    #sheet .lh-mf-in .ar{font:600 8.4pt Tahoma,'Segoe UI',Arial;color:#cfe2ff}
+    ${opt.a5 ? `@page{size:A5 landscape;margin:0}
+    #sheet .lh{width:210mm;min-height:0;height:147.5mm;font-size:8.6pt;line-height:1.4;display:flex;flex-direction:column}
+    #sheet .lh-b{flex:1;display:flex;flex-direction:column}
+    #sheet .lh-mf{position:static;width:auto;flex:none;background:linear-gradient(90deg,#1D7FD1,#38b6ff 40%,#1F2A6B);padding-top:1.1mm}
+    #sheet .lh-mf-in{background:linear-gradient(120deg,#141c4d,#1F2A6B 55%,#22358a);color:#e8f0ff;display:flex;align-items:center;justify-content:space-between;gap:4mm;padding:2.6mm 10mm;font-size:7.6pt;letter-spacing:.01em}
+    #sheet .lh-mf-in span{display:inline-flex;align-items:center;gap:1.4mm;white-space:nowrap}
+    #sheet .lh-mf-in .ar{font:600 8pt Tahoma,'Segoe UI',Arial;color:#cfe2ff}
+    #sheet .lh-hw{height:43mm;overflow:hidden}#sheet .lh-hw .lh-h{margin:-10mm 0 0}
+    #sheet .lh-wm{width:80mm;height:80mm;top:55%}
+    #sheet .lh-b{padding:0 10mm 3.5mm}
+    #sheet .lh-t{margin:-1mm 0 2.5mm;align-items:center}
+    #sheet .lh-t h1{font-size:15pt}#sheet .lh-t h1::after{margin-top:1.4mm;width:20mm}
+    #sheet .lh-meta{font-size:7.8pt;min-width:0}#sheet .lh-meta tr{display:inline-table}
+    #sheet .lh-meta th{padding:1mm 1.5mm 1mm 3mm}#sheet .lh-meta td{padding:1mm 3mm 1mm 0}
+    #sheet .lh-amt{padding:3.4mm 5mm;margin-bottom:3mm;border-radius:2.5mm}
+    #sheet .lh-amt b{font-size:17pt}#sheet .lh-amt span{font-size:8pt;max-width:120mm}
+    #sheet .lh-amt div[style*="12.5pt"]{font-size:11pt!important}
+    #sheet table.lh-tb{font-size:8.2pt;margin-bottom:0}
+    #sheet .lh-kv tbody{display:grid;grid-template-columns:1fr 1fr;column-gap:7mm}
+    #sheet .lh-kv tr{display:grid;grid-template-columns:22mm 1fr}#sheet .lh-kv th{white-space:nowrap}
+    #sheet .lh-kv th,#sheet .lh-kv td{padding:1.9mm 1.5mm;border-bottom:1px solid #e6ecf5;background:none!important}
+    #sheet .lh-qr{font-size:6.8pt;max-width:none;flex-direction:column;align-items:flex-start;gap:1mm}#sheet .lh-qr img{width:16mm;height:16mm}
+    #sheet .lh-qr div{line-height:1.25}
+    #sheet .lh-foot2{margin-top:auto;display:flex;align-items:flex-end;gap:7mm;padding-top:3mm}
+    #sheet .lh-foot2 .lh-end{margin:0;flex:none}
+    #sheet .lh-foot2 .lh-sig{flex:1;margin:0;gap:5mm}
+    #sheet .lh-sig div{font-size:7.6pt;padding-top:1.4mm;margin-top:0;position:relative}
+    #sheet .lh-sig div::before{content:"";display:block;height:15mm;margin:-1.4mm 0 1.4mm;border-bottom:1.2px solid #1F2A6B;background:repeating-linear-gradient(transparent 0 3.6mm,transparent 3.6mm);}
+    #sheet .lh-sig div{border-top:0!important}
+    #sheet .lh-stamp{top:62mm;left:60mm}` : ''}
   </style>
   <div class="lh">${opt.stamp ? `<div class="lh-stamp">${esc(opt.stamp)}</div>` : ''}
-    <img class="lh-h" src="${LH_HEAD}" alt="Al Tarwi Building Contracting">
+    <div class="lh-hw"><img class="lh-h" src="${LH_HEAD}" alt="Al Tarwi Building Contracting"></div>
     <svg class="lh-wm" viewBox="0 0 120 120" aria-hidden="true"><use href="#at-mark"/></svg>
     <div class="lh-b"><div class="lh-t"><div><h1>${title}</h1>${opt.sub ? `<div class="lh-sub">${opt.sub}</div>` : ''}</div>
       <table class="lh-meta">${meta.filter(m => m[1] !== '' && m[1] != null).map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}</table></div>
       ${body}</div>
-    <img class="lh-f" src="${LH_FOOT}" alt="Mob: 050 7202796, Al Dhait Al Janoobi, Ras Al Khaimah - United Arab Emirates"></div>`;
+    ${lhModernFoot()}</div>`;
   waitImages($('sheet')).then(() => print());
+}
+/* modern footer bar (A5 vouchers): phone · address · TRN, Arabic address on the right */
+function lhModernFoot(){
+  const trn = (X.d && X.d.settings && X.d.settings.companyTrn) || '';
+  const ic = p => `<svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="#7cc4ff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+  return `<div class="lh-mf"><div class="lh-mf-in">
+    <span>${ic('<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/>')} 050 720 2796</span>
+    <span>${ic('<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>')} Al Dahan, Ras Al Khaimah, UAE</span>
+    ${trn ? `<span>${ic('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h6"/>')} TRN ${esc(trn)}</span>` : ''}
+    <span class="ar" dir="rtl">منطقة الدهان، رأس الخيمة - الإمارات العربية المتحدة</span></div></div>`;
 }
 const lhSig = (list) => `<div class="lh-sig" style="grid-template-columns:repeat(${list.length},1fr)">${list.map(([l, n]) => `<div>${l}<small>${esc(n || '')}</small></div>`).join('')}</div>`;
 const lhKV = rows => `<table class="lh-tb lh-kv">${rows.filter(r => r[1] !== '' && r[1] != null && r[1] !== false).map(([k, v]) => `<tr><th>${k}</th><td>${esc(v)}</td></tr>`).join('')}</table>`;
@@ -2657,11 +2700,11 @@ async function xVoucher(t){
       ['VAT invoice', t.vat ? 'Net ' + aed(t.net) + ' + VAT ' + aed(t.vatAmt) + (t.trn ? ' · Supplier TRN ' + t.trn : '') : ''],
       ['Qty × rate', t.qty ? t.qty + ' ' + t.unit + ' × ' + aed(t.rate) : ''], ['Vehicle', t.vehicle], ['Staff', t.staff], ['Remarks', t.remarks && (t.item || t.desc) ? t.remarks : '']])}
     ${lines}
-    <div class="lh-end">${qr ? `<div class="lh-qr"><img src="${qr}" alt="QR"><div>Scan to open this voucher in the Al Tarwi app<br><b>${esc(t.voucher)}</b></div></div>` : '<div></div>'}</div>
+    <div class="lh-foot2"><div class="lh-end">${qr ? `<div class="lh-qr"><img src="${qr}" alt="QR"><div>Scan to open<br>this voucher<br><b>${esc(t.voucher)}</b></div></div>` : '<div></div>'}</div>
     ${lhSig(out ? [['Prepared by', t.by], ['Checked by', ''], ['Approved by', t.apBy && !/Imported/.test(t.apBy) ? t.apBy : ''], ["Receiver's signature", '']]
       : cr ? [['Received by', t.by], ['Checked by', ''], ['For Al Tarwi Building Contracting', '']]
-      : [['Prepared by', t.by], ['Checked by', ''], [t.type === 'TRANSFER' ? 'Received by' : 'Approved by', t.type === 'TRANSFER' && t.apBy ? t.apBy : '']])}`,
-    { stamp, a5: true });                                   // vouchers print on A5 (same design, scaled 148/210)
+      : [['Prepared by', t.by], ['Checked by', ''], [t.type === 'TRANSFER' ? 'Received by' : 'Approved by', t.type === 'TRANSFER' && t.apBy ? t.apBy : '']])}</div>`,
+    { stamp, a5: true });                                   // vouchers print on A5 landscape (compact layout)
 }
 
 /* ---------- site details ---------- */
