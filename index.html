@@ -557,6 +557,11 @@ body.at-exp{overflow:hidden}body.at-exp .bar{display:none!important}
 .x-pendbar b{font:800 20px var(--f-display)}.x-pendbar span{margin-left:auto;background:#8a5a00;color:#fff;border-radius:999px;padding:5px 12px;font-size:12px}
 .x-scanbtn{width:100%;border:1.5px dashed color-mix(in srgb,var(--blue) 55%,transparent)!important;background:color-mix(in srgb,var(--blue) 7%,var(--card))!important;color:var(--blue)!important;font-weight:700}
 .x-lines{display:grid;gap:6px}
+.x-cbrow .body{display:grid;gap:8px;padding-top:12px}
+.x-cbtop{display:flex;align-items:center;gap:10px}.x-cbtop b{font:800 15px var(--f-display);color:var(--blue)}
+.x-cbtop img{height:44px;width:auto;max-width:120px;border-radius:8px;object-fit:cover;box-shadow:var(--shadow)}
+.x-cbdel{margin-left:auto;border:0;background:var(--pill);color:var(--danger);border-radius:10px;width:34px;height:34px;font-size:19px;cursor:pointer}
+.x-cbrow input{min-width:0}
 .x-ln{display:grid;grid-template-columns:2.4fr 1fr .9fr 32px;gap:5px;align-items:center}
 .x-ln.inv{grid-template-columns:2.6fr .8fr .8fr 1fr 1.1fr 32px}
 .x-ln input{padding:8px 7px;font-size:13px;min-width:0}
@@ -2226,7 +2231,7 @@ function xForm(){
     <div><label for="xf-party">Paid to</label><input id="xf-party" data-xi="party" list="x-parties" value="${esc(f.party || '')}" placeholder="Supplier, subcontractor or person"></div>
     <div><label>Payment method</label>${chips('method', XPAY)}</div>
     ${/^(Bank transfer|Company card)$/.test(f.method) ? bankSel('Paid from account') + `<div><label for="xf-ref">Bank reference</label><input id="xf-ref" data-xi="ref" value="${esc(f.ref || '')}"></div>` : ''}
-    ${f.method === 'Cheque' ? bankSel('Cheque from account') + chqFields() + '<p class="hint">The cheque goes to the cheque register; the bank balance changes when it is <b>Cleared</b>.</p>' : ''}
+    ${f.method === 'Cheque' ? '<button type="button" class="btn sec x-scanbtn" data-xscan="cheque">Scan the cheque you wrote</button>' + bankSel('Cheque from account') + chqFields() + '<p class="hint">The cheque goes to the cheque register; the bank balance changes when it is <b>Cleared</b>.</p>' : ''}
     ${/own pocket/.test(f.method) ? '<p class="hint">Paid from your own pocket – it goes on the "to reimburse" list and is not taken from the cash box.</p>' : ''}
     ${showVeh ? `<div class="x-two"><div><label for="xf-veh">Vehicle</label><select id="xf-veh" data-xi="vehicle">${opt('', 'Choose…', f.vehicle)}${d.vehicles.map(v => opt(v, v, f.vehicle)).join('')}</select></div>
       ${/Fuel/.test(f.cat) ? `<div><label for="xf-odo">Odometer (km)</label><input id="xf-odo" data-xi="odo" inputmode="numeric" value="${esc(f.odo || '')}"></div>` : '<div></div>'}</div>` : ''}
@@ -2647,7 +2652,7 @@ function xChq(){
         <span class="t"><b>${esc(c.party || '–')}</b><small>Chq ${esc(c.no)} · ${dmy(c.date)}${c.account ? ' · ' + esc(c.account) : ''}${c.site ? ' · ' + esc(c.site) : ''}</small><br>
         <span class="x-st ${c.status === 'Cleared' ? 'Approved' : /Bounced|Returned|Cancelled/.test(c.status) ? 'Rejected' : 'Pending'}">${esc(c.status)}</span>${due ? ` <span class="x-st Rejected">${late ? 'Date passed' : 'Due soon'}</span>` : ''}</span>
         <span class="a ${dir === 'Issued' ? 'out' : 'in'}">${aed(c.amount)}</span></button>`; }).join('') || '<div class="empty">No cheques here.</div>'}</div>
-    <div class="x-save"><div><button class="btn sec" data-x="home">Back</button><button class="btn sec" data-xchqprint>Print</button>${xIsAdmin() ? `<button class="btn" data-xchqnew="${dir}">Add cheque</button>` : ''}</div></div>`;
+    <div class="x-save"><div><button class="btn sec" data-x="home">Back</button><button class="btn sec" data-xchqprint>Print</button>${xIsAdmin() ? `<button class="btn sec" data-xchqnew="${dir}">Add</button><button class="btn" data-xchqscan="${dir}">Scan cheques</button>` : ''}</div></div>`;
 }
 const XCHQ_NEXT = { Issued: ['Presented', 'Cleared', 'Bounced', 'Cancelled'], Presented: ['Cleared', 'Bounced'], Received: ['Deposited', 'Cleared', 'Bounced', 'Returned'], Deposited: ['Cleared', 'Bounced'], Bounced: ['Cancelled', 'Returned'] };
 function xChqDetail(id){
@@ -2670,7 +2675,8 @@ function xChqDetail(id){
         <div class="x-ap-btns" style="grid-template-columns:repeat(${next.length},1fr);margin-top:10px">${next.map(s => `<button class="btn ${s === 'Cleared' ? 'ok' : /Bounced|Cancelled|Returned/.test(s) ? 'danger' : 'sec'}" data-xqst="${s}">${s}</button>`).join('')}</div>` : ''}
       <div class="x-sec">History</div><ol class="x-tl">${(c.history || []).map(h => `<li class="${/Bounced|Cancel|Return/.test(h.a) ? 'bad' : /Cleared/.test(h.a) ? 'ok' : ''}"><b>${esc(h.a)}</b><small>${esc(h.who || '')} · ${dmy(h.at)} ${String(h.at).slice(11, 16)}</small>${h.note ? `<div class="hint">${esc(h.note)}</div>` : ''}</li>`).join('')}</ol>
     </div></div>
-    <div class="x-save"><div><button class="btn sec" data-xchqback>Back</button>${t ? `<button class="btn sec" data-xopen="${esc(t.id)}">Open ${esc(t.voucher)}</button>` : ''}${xIsAdmin() && !c.voucher ? `<button class="btn" data-xchqedit="${esc(c.id)}">Edit</button>` : ''}</div></div>`;
+    <div class="x-save"><div><button class="btn sec" data-xchqback>Back</button>${t ? `<button class="btn sec" data-xopen="${esc(t.id)}">Open ${esc(t.voucher)}</button>` : ''}${xIsAdmin() && !c.voucher ? `<button class="btn sec" data-xchqedit="${esc(c.id)}">Edit</button>` : ''}
+      ${xIsAdmin() && !c.voucher && c.dir === 'Received' && !/Bounced|Cancelled|Returned/.test(c.status) ? `<button class="btn ok" data-xchqrec="${esc(c.id)}">Record client receipt</button>` : ''}</div></div>`;
   $('exp').scrollTop = 0;
 }
 function xChqForm(dir, id, keep){
@@ -2678,7 +2684,7 @@ function xChqForm(dir, id, keep){
   X.cf = c; X.view = 'chqf';
   const opt = (v, l, cur) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(l)}</option>`;
   xMain().innerHTML = `<div class="x-form"><div class="card"><h2>${c.id ? 'EDIT CHEQUE' : c.dir === 'Issued' ? 'CHEQUE ISSUED' : 'CHEQUE RECEIVED'}</h2><div class="body">
-      ${c.dir === 'Received' ? '<button type="button" class="btn sec x-scanbtn" data-xscan="cheque">Scan cheque photo</button>' : ''}
+      <button type="button" class="btn sec x-scanbtn" data-xscan="cheque">Scan cheque photo</button>
       <div class="x-two"><div><label for="xcf-no">Cheque No.</label><input id="xcf-no" data-xc="no" inputmode="numeric" value="${esc(c.no || '')}"></div>
         <div><label for="xcf-date">Cheque date</label><input type="date" id="xcf-date" data-xc="date" value="${esc(c.date || '')}"></div></div>
       <div><label for="xcf-amt">Amount (AED)</label><input id="xcf-amt" class="x-amt" data-xc="amount" inputmode="decimal" value="${esc(c.amount || '')}" placeholder="0.00"></div>
@@ -2880,7 +2886,7 @@ document.body.appendChild(xScanIn);
 xScanIn.onchange = async () => {
   const file = xScanIn.files[0]; xScanIn.value = ''; if (!file) return;
   const kind = X.scanKind, target = X.view === 'chqf' ? X.cf : X.f; if (!target) return;
-  const btn = document.querySelector('.x-scanbtn'); if (btn) { btn.disabled = true; btn.textContent = 'Reading the photo…'; }
+  const btn = document.querySelector(`.x-scanbtn[data-xscan="${kind}"]`), btnTxt = btn ? btn.textContent : ''; if (btn) { btn.disabled = true; btn.textContent = 'Reading the photo…'; }
   try {
     const src = await shrink(file, 2000, 0.85), r = await server('expScan', src, kind, X.pin), o = r.data || {};
     const num2 = v => xr2(String(v == null ? '' : v).replace(/[^\d.]/g, ''));
@@ -2902,15 +2908,68 @@ xScanIn.onchange = async () => {
     } else {
       const amt = num2(o.amount), no = String(o.chequeNo || '').replace(/\D/g, '');
       if (X.view === 'chqf') { const c = X.cf; c.photo = { id: r.id };
-        if (r.data) { if (no) c.no = no; if (okDate(o.date)) c.date = o.date; if (amt) c.amount = amt.toFixed(2); if (o.bank) c.dBank = o.bank; if (o.drawer) c.party = o.drawer; }
+        if (r.data) { if (no) c.no = no; if (okDate(o.date)) c.date = o.date; if (amt) c.amount = amt.toFixed(2); if (o.bank) c.dBank = o.bank;
+          const who = c.dir === 'Issued' ? o.payee : o.drawer; if (who) c.party = String(who).trim(); }
         xChqForm(c.dir, c.id, c);
-      } else { const f = X.f; f.receipts.push({ id: r.id });
-        if (r.data) { if (no) f.chqNo = no; if (okDate(o.date)) f.chqDate = o.date; if (amt) f.amount = amt.toFixed(2); if (o.bank) f.ref = o.bank; if (o.drawer && !f.party) f.party = o.drawer; }
+      } else { const f = X.f, exp = f.type === 'EXPENSE'; f.receipts.push({ id: r.id });
+        if (r.data) { if (no) f.chqNo = no; if (okDate(o.date)) f.chqDate = o.date; if (amt) f.amount = amt.toFixed(2);
+          if (exp) { if (o.payee && !f.party) f.party = String(o.payee).trim(); }
+          else { if (o.bank) f.ref = o.bank; if (o.drawer && !f.party) f.party = o.drawer; } }
         xForm(); }
       toast(r.data ? 'Cheque read – check the details' : 'Photo saved, but it could not be read: ' + (r.note || ''));
     }
-  } catch (er) { toast('Scan failed: ' + errText(er)); if (btn) { btn.disabled = false; btn.textContent = kind === 'bill' ? 'Scan bill / receipt' : 'Scan cheque photo'; } }
+  } catch (er) { toast('Scan failed: ' + errText(er)); if (btn) { btn.disabled = false; btn.textContent = btnTxt; } }
 };
+
+/* ---------- scan several cheques at once (e.g. a client's post-dated cheques) -> review list -> save all ---------- */
+const xScanMany = Object.assign(document.createElement('input'), { type: 'file', accept: 'image/*', multiple: true, hidden: true });
+document.body.appendChild(xScanMany);
+xScanMany.onchange = async () => {
+  const files = [...xScanMany.files]; xScanMany.value = ''; if (!files.length) return;
+  const cb = X.cb && X.view === 'chqbatch' ? X.cb : (X.cb = { dir: X.chqDir || 'Received', rows: [], site: '', party: '', account: '' });
+  cb.busy = (cb.busy || 0) + files.length; X.view = 'chqbatch'; xChqBatch();
+  const num2 = v => xr2(String(v == null ? '' : v).replace(/[^\d.]/g, ''));
+  for (const file of files) {
+    try {
+      const r = await server('expScan', await shrink(file, 2200, 0.85), 'cheques', X.pin);
+      const list = r.data && Array.isArray(r.data.cheques) ? r.data.cheques : r.data && r.data.chequeNo ? [r.data] : [];
+      list.forEach(o => cb.rows.push({ dir: cb.dir, no: String(o.chequeNo || '').replace(/\D/g, ''), date: /^\d{4}-\d{2}-\d{2}$/.test(String(o.date || '')) ? o.date : '',
+        amount: num2(o.amount) ? num2(o.amount).toFixed(2) : '', dBank: String(o.bank || '').trim(), party: String((cb.dir === 'Issued' ? o.payee : o.drawer) || cb.party || '').trim(),
+        site: cb.site, account: cb.account, remarks: '', photo: { id: r.id } }));
+      if (!list.length) { cb.rows.push({ dir: cb.dir, no: '', date: '', amount: '', dBank: '', party: cb.party, site: cb.site, account: cb.account, remarks: '', photo: { id: r.id } });
+        toast('One photo could not be read – fill that line by hand'); }
+    } catch (er) { toast('A photo failed: ' + errText(er)); }
+    cb.busy--; if (X.view === 'chqbatch') xChqBatch();
+  }
+  cb.rows.sort((a, b) => (a.date || '9').localeCompare(b.date || '9'));
+  if (X.view === 'chqbatch') xChqBatch();
+};
+function xChqBatch(){
+  const cb = X.cb, opt = (v, l, cur) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(l)}</option>`;
+  const used = new Set((X.d.cheques || []).filter(c => c.dir === cb.dir && c.status !== 'Cancelled').map(c => String(c.no)));
+  const total = cb.rows.reduce((s, r) => s + xr2(r.amount), 0);
+  xMain().innerHTML = `<div class="x-tot"><span>${cb.rows.length} cheque${cb.rows.length === 1 ? '' : 's'} ${cb.dir === 'Issued' ? 'issued' : 'received'}</span><span>AED ${aed(total)}</span>
+      ${cb.busy ? `<span style="color:var(--blue)">Reading ${cb.busy} photo${cb.busy > 1 ? 's' : ''}…</span>` : ''}</div>
+    <div class="card"><h2>FOR ALL CHEQUES</h2><div class="body">
+      <div class="x-two"><div><label for="xcb-site">Site</label><select id="xcb-site" data-xcball="site">${opt('', '–', cb.site)}${X.d.sites.map(s => opt(s.code, s.code + (s.client ? ' – ' + s.client : ''), cb.site)).join('')}</select></div>
+        <div><label for="xcb-acc">${cb.dir === 'Issued' ? 'Our account' : 'Deposit to (optional)'}</label><select id="xcb-acc" data-xcball="account">${opt('', '–', cb.account)}${xBankNames().map(b => opt(b, b, cb.account)).join('')}</select></div></div>
+      <div><label for="xcb-party">${cb.dir === 'Issued' ? 'Pay to' : 'Received from'} (fills empty lines)</label><input id="xcb-party" data-xcball="party" value="${esc(cb.party || '')}" list="x-parties3"></div>
+    </div></div>
+    ${cb.rows.map((r, i) => { const dup = r.no && used.has(String(r.no)), twice = r.no && cb.rows.some((x, j) => j !== i && x.no === r.no);
+      return `<div class="card x-cbrow"><div class="body">
+        <div class="x-cbtop"><b>#${i + 1}</b>${r.photo && r.photo.id ? `<a href="${viewUrl(r.photo)}" target="_blank" rel="noopener"><img src="${thumb(r.photo, 200)}" alt="Cheque ${i + 1} photo"></a>` : ''}
+          ${dup ? '<span class="x-st Rejected">Already in register</span>' : twice ? '<span class="x-st Rejected">Same number twice</span>' : ''}<button type="button" class="x-cbdel" data-xcbdel="${i}" aria-label="Remove cheque ${i + 1}">×</button></div>
+        <div class="x-two"><input data-xcb="${i}|no" value="${esc(r.no)}" placeholder="Cheque No." inputmode="numeric" aria-label="Cheque number">
+          <input data-xcb="${i}|amount" value="${esc(r.amount)}" placeholder="Amount (AED)" inputmode="decimal" aria-label="Amount"></div>
+        <div class="x-two"><input type="date" data-xcb="${i}|date" value="${esc(r.date)}" aria-label="Cheque date"><input data-xcb="${i}|dBank" value="${esc(r.dBank)}" placeholder="Drawn on bank" aria-label="Bank"></div>
+        <input data-xcb="${i}|party" value="${esc(r.party)}" placeholder="${cb.dir === 'Issued' ? 'Pay to' : 'From'}" aria-label="Party">
+      </div></div>`; }).join('') || (cb.busy ? '' : '<div class="empty">No cheques yet. Tap "Add photos".</div>')}
+    <datalist id="x-parties3">${[...new Set(X.d.parties.map(p => p.name).concat(X.d.sites.map(s => s.client).filter(Boolean)))].map(p => `<option value="${esc(p)}">`).join('')}</datalist>
+    <p class="hint">Tip: lay up to 4 cheques side by side in one photo, or pick several photos. Check every number, date and amount against the cheque before saving.</p>
+    <p class="x-ferr" id="x-ferr"></p>
+    <div class="x-save"><div><button class="btn sec" data-xcbback>Back</button><button class="btn sec" data-xcbmore>Add photos</button>
+      <button class="btn ok" id="xcb-save" ${cb.busy || !cb.rows.length ? 'disabled' : ''}>Save ${cb.rows.length || ''} cheque${cb.rows.length === 1 ? '' : 's'}</button></div></div>`;
+}
 
 /* ---------- events ---------- */
 $('exp').addEventListener('click', async e => {
@@ -2982,6 +3041,22 @@ $('exp').addEventListener('click', async e => {
   if (D.xchqflt) { X.chqFlt = D.xchqflt; xChq(); return; }
   if (D.xchq) return xChqDetail(D.xchq);
   if ('xchqback' in D) return xGo(X.chqPrev === 'bank' ? 'bank' : 'chq');
+  if (D.xchqscan) { X.cb = { dir: D.xchqscan, rows: [], site: '', party: '', account: '', busy: 0 }; X.view = 'chqbatch'; xChqBatch(); xScanMany.click(); return; }
+  if ('xcbmore' in D) { xScanMany.click(); return; }
+  if (D.xcbdel != null) { X.cb.rows.splice(+D.xcbdel, 1); xChqBatch(); return; }
+  if ('xcbback' in D) { if (X.cb.rows.length && !await ask('Leave without saving these ' + X.cb.rows.length + ' cheques?', 'Leave')) return; X.cb = null; return xGo('chq'); }
+  if (b.id === 'xcb-save') {
+    const bad = X.cb.rows.findIndex(r => !r.no || !r.date || !xr2(r.amount));
+    if (bad >= 0) { $('x-ferr').textContent = 'Cheque #' + (bad + 1) + ': fill the number, date and amount.'; return; }
+    b.disabled = true; b.textContent = 'Saving…';
+    try { X.d = await server('expSaveCheques', X.cb.rows, X.pin); keep('exp.cache', X.d); toast(X.cb.rows.length + ' cheques saved'); X.chqDir = X.cb.dir; X.chqFlt = 'Pending'; X.cb = null; xGo('chq'); }
+    catch (er) { $('x-ferr').textContent = errText(er); b.disabled = false; b.textContent = 'Try again'; }
+    return;
+  }
+  if (D.xchqrec) { const c = (X.d.cheques || []).find(x => x.id === D.xchqrec);
+    X.preRec = { alloc: c.site || '', party: c.party || xSite(c.site).client || '', amount: xr2(c.amount).toFixed(2), method: 'Cheque', chqNo: c.no, chqDate: c.date, ref: c.dBank || '', bank: c.account || '', linkChq: c.id,
+      receipts: c.photo && c.photo.id ? [{ id: c.photo.id }] : [] };
+    return xNew('CLIENT RECEIPT'); }
   if (D.xchqnew) return xChqForm(D.xchqnew);
   if (D.xchqedit) return xChqForm(null, D.xchqedit);
   if ('xchqprint' in D) return xChqPrint();
@@ -3102,6 +3177,10 @@ $('exp').addEventListener('input', e => {
     if ((k === 'qty' || k === 'rate') && xr2(l.qty) && xr2(l.rate)) { l.amount = xr2(xr2(l.qty) * xr2(l.rate)).toFixed(2); const a = document.querySelector(`[data-xl="${i}|amount"]`); if (a) a.value = l.amount; }
     xLineSum(); return; }
   if (t.dataset.xs && X.sf) { X.sf[t.dataset.xs] = t.value; return; }
+  if (t.dataset.xcb && X.cb) { const [i, k] = t.dataset.xcb.split('|'); X.cb.rows[+i][k] = t.value; if (k === 'party') delete X.cb.rows[+i]._auto; if (k === 'no' || k === 'amount') { clearTimeout(X._cb); X._cb = setTimeout(() => { const a = document.activeElement, sel = a && a.dataset.xcb; xChqBatch(); if (sel) { const n = document.querySelector(`[data-xcb="${sel}"]`); if (n) { n.focus(); try { n.setSelectionRange(n.value.length, n.value.length); } catch (e) {} } } }, 700); } return; }
+  if (t.dataset.xcball && X.cb) { const k = t.dataset.xcball, v = t.value; X.cb[k] = v;
+    X.cb.rows.forEach(r => { if (k !== 'party') r[k] = v; else if (!r.party || r._auto) { r.party = v; r._auto = true; } });
+    if (k !== 'party') xChqBatch(); else document.querySelectorAll('[data-xcb$="|party"]').forEach((n, i) => { n.value = X.cb.rows[i].party; }); return; }
   if (t.dataset.xc && X.cf) { X.cf[t.dataset.xc] = t.value; return; }
   if (t.dataset.xd && X.df) { const k = t.dataset.xd, f = X.df; f[k] = t.value;
     if (k === 'advRec') f.advRecEdit = t.value.trim() !== '';
