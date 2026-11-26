@@ -2405,8 +2405,9 @@ function xLive(){
   if ($('x-md')) $('x-md').innerHTML = '';
   if ($('x-next')) $('x-next').innerHTML = xWhatHappens(f);
   if ($('x-dn')) { clearTimeout(X._dn); X._dn = setTimeout(() => { if ($('x-dn') && X.f) $('x-dn').innerHTML = xDeliveryCheck(X.f); }, 250); }
-  if ($('x-norc')) { const need = amt > s.receiptLimit && !f.receipts.some(p => p.id || p.uploading);
-    $('x-norc').innerHTML = need ? `<label for="xf-norc">No receipt? Write why (needed above AED ${aed(s.receiptLimit)})</label><input id="xf-norc" data-xi="noRcpt" value="${esc(f.noRcpt || '')}">` : '';
+  if ($('x-norc')) { const free = xNoRcptCat(f.cat), need = amt > s.receiptLimit && !f.receipts.some(p => p.id || p.uploading) && !free;
+    $('x-norc').innerHTML = need ? `<label for="xf-norc">No receipt? Write why (needed above AED ${aed(s.receiptLimit)})</label><input id="xf-norc" data-xi="noRcpt" value="${esc(f.noRcpt || '')}">`
+      : free && !f.receipts.length ? `<p class="hint" style="margin:0">No receipt photo needed for ${esc(f.cat)}. A photo of the signed voucher or salary sheet is still good to add.</p>` : '';
     if (!need) f.noRcpt = ''; }
 }
 async function xSave(){
@@ -2463,12 +2464,14 @@ function xQR(text){
 
 /* ---------- step 4: reminders, missing receipts, daily summary ---------- */
 const xReal = t => !/^TEST/i.test(t.box || '') && !t.batch;
+/* categories that never need a receipt photo (Categories tab "No receipt needed"; salaries and advances by default) */
+const xNoRcptCat = cat => { const c = (X.d.cats || []).find(x => x.name === cat); return c ? c.noRcpt === true : /salary|advance/i.test(cat || ''); };
 const xAge = d => Math.max(0, Math.round((new Date(today()) - new Date(String(d).slice(0, 10))) / 864e5));
 const xSumAmt = a => a.reduce((s, t) => s + t.amount, 0);
 /* expenses above the receipt limit that still have no receipt photo (a reason was typed instead) */
 function xMissing(){
   const lim = X.d.settings.receiptLimit || 100, me = X.d.user.name;
-  return X.d.txns.filter(t => xReal(t) && xLive2(t) && t.amount > lim && !(t.receipts || []).some(p => p && p.id) && (xSeesAll() || t.by === me))
+  return X.d.txns.filter(t => xReal(t) && xLive2(t) && t.amount > lim && !(t.receipts || []).some(p => p && p.id) && !xNoRcptCat(t.cat) && (xSeesAll() || t.by === me))
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 function xAlerts(){
