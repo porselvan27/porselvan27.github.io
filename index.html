@@ -577,6 +577,18 @@ details.x-fold>div{padding:0 12px 12px}
 .x-badge{display:inline-block;min-width:20px;padding:1px 6px;border-radius:999px;background:#f5a524;color:#0b2a5b;font-size:11.5px;font-weight:800;margin-left:4px}
 .x-pendbar{width:100%;display:flex;align-items:center;gap:8px;border:0;border-radius:16px;padding:14px 16px;margin-bottom:6px;background:#fff3d6;color:#8a5a00;font:600 14px var(--f-body);cursor:pointer;text-align:left}
 .x-pendbar b{font:800 20px var(--f-display)}.x-pendbar span{margin-left:auto;background:#8a5a00;color:#fff;border-radius:999px;padding:5px 12px;font-size:12px}
+.dsr-steps{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:10px!important}
+.dsr-steps::-webkit-scrollbar{display:none}
+.dsr-steps button{flex:1 0 auto;display:flex;align-items:center;gap:7px;border:0;border-radius:12px;padding:6px 10px 6px 6px;background:#ffffff1f;color:#fff;font:600 12px var(--f-body);cursor:pointer;text-align:left}
+.dsr-steps i{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font:800 12px var(--f-display);font-style:normal;background:#ffffff33;flex:none}
+.dsr-steps button.ok i{background:#2fae6f}.dsr-steps small{display:block;font-weight:500;opacity:.8;font-size:10.5px;white-space:nowrap}
+.dsr-note{font-size:12.5px;color:var(--muted);margin-top:4px;min-height:0}
+.dsr-why{margin:-4px 0 8px!important}
+.dsr-sum{background:color-mix(in srgb,var(--blue) 8%,var(--card));border:1px solid color-mix(in srgb,var(--blue) 25%,transparent);border-radius:14px;padding:12px 14px;margin:6px 0 90px;font-size:13.5px;line-height:1.5}
+.dsr-sum b{color:var(--blue)}.dsr-sum ul{margin:4px 0 0;padding-left:18px}.dsr-sum .warn{color:var(--danger);font-weight:600}
+.rec-bill{grid-column:1/-1;font-size:12.5px;color:#a86a00;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.rec-bill .ok{color:var(--ok);font-weight:600}
+.linkbtn{border:0;background:none;color:var(--blue);font:inherit;font-weight:700;text-decoration:underline;cursor:pointer;padding:0}
 .x-scanbtn{width:100%;border:1.5px dashed color-mix(in srgb,var(--blue) 55%,transparent)!important;background:color-mix(in srgb,var(--blue) 7%,var(--card))!important;color:var(--blue)!important;font-weight:700}
 .x-lines{display:grid;gap:6px}
 .x-cbrow .body{display:grid;gap:8px;padding-top:12px}
@@ -725,61 +737,69 @@ button.x-bk{text-align:left;border:0;cursor:pointer;font:inherit;color:inherit}
     <span class="sync" id="sync">Connecting…</span>
   </div>
   <nav class="wrap">
-    <button data-tab="form" class="on">Report</button>
-    <button data-tab="saved">Saved</button>
+    <button data-tab="form" class="on">Today</button>
+    <button data-tab="saved">Past reports</button>
     <button data-tab="reg">Registers</button>
     <button data-tab="settings">Settings</button>
   </nav>
+  <div class="wrap dsr-steps" id="dsr-steps" hidden></div>
 </header>
 
 <main class="wrap">
 <div class="loading" id="loading">Loading reports…</div>
 <section id="tab-form" hidden>
-  <div class="card"><h2>REPORT DETAILS</h2><div class="body grid">
+  <div class="card" id="c-day"><h2>1 · DAY &amp; SITE</h2><div class="body grid">
     <div><label for="f-date">Date</label><input type="date" id="f-date"></div>
-    <div><label for="f-site">Site name</label><input id="f-site"></div>
+    <div><label for="f-site">Site</label><input id="f-site" list="site-list" autocapitalize="characters" placeholder="e.g. AT018"><datalist id="site-list"></datalist>
+      <div class="dsr-note" id="f-site-note"></div></div>
     <div><label for="f-eng">Name of engineer</label><input id="f-eng"></div>
     <div><label for="f-in">Time of reporting to site</label><input id="f-in"></div>
     <div><label for="f-out">Time of leaving site</label><input id="f-out"></div>
   </div></div>
 
-  <div class="card"><h2>SUB CONTRACTOR LABOUR DETAILS <span class="tot" id="t-sub"></span></h2><div class="body">
-    <div class="rows" id="sub"></div><button class="add" data-add="sub">+ Add contractor</button></div></div>
+  <div class="card" id="c-sub"><h2>2 · SUB-CONTRACTOR WORKERS <span class="tot" id="t-sub"></span></h2><div class="body">
+    <p class="hint dsr-why">How many men each sub-contractor sent today.</p>
+    <div class="rows" id="sub"></div><button class="add" data-add="sub">+ Add sub-contractor</button></div></div>
 
-  <div class="card"><h2>COMPANY LABOUR DETAILS <span class="tot" id="t-co"></span></h2><div class="body">
+  <div class="card" id="c-co"><h2>3 · OUR WORKERS <span class="tot" id="t-co"></span></h2><div class="body">
+    <p class="hint dsr-why">Yesterday's workers are already listed as Present – just mark who is Absent.</p>
     <div class="rows" id="co"></div><button class="add" data-add="co">+ Add worker</button>
-    <p class="hint">One row per worker. Helper / Labour count as unskilled, other trades as skilled. Tomorrow's report starts with the same workers marked Present.</p>
+    <p class="hint">Helper / Labour count as unskilled, other trades as skilled. Labour cost goes to the site cost automatically.</p>
     <datalist id="trades"></datalist></div></div>
 
-  <div class="card"><h2>RECEIVED MATERIALS DETAILS</h2><div class="body">
+  <div class="card" id="c-rec"><h2>4 · MATERIALS RECEIVED</h2><div class="body">
     <label class="scan" for="scan-rec"><b>Scan delivery note</b><small>Take a photo – the items fill in by themselves</small></label>
     <input type="file" id="scan-rec" accept="image/*" hidden>
     <div class="rows" id="rec"></div><button class="add" data-add="rec">+ Add received material</button>
+    <p class="hint">Quantities go into Stock → Received automatically. Each delivery shows if its bill is in Expenses.</p>
     <div class="photos docs" id="docs-rec"></div></div></div>
 
-  <div class="card"><h2>SENTOUT MATERIALS DETAILS</h2><div class="body">
+  <div class="card" id="c-sent"><h2>5 · MATERIALS SENT OUT</h2><div class="body">
     <label class="scan" for="scan-sent"><b>Scan gate pass / delivery note</b><small>Take a photo – the items fill in by themselves</small></label>
     <input type="file" id="scan-sent" accept="image/*" hidden>
     <div class="rows" id="sent"></div><button class="add" data-add="sent">+ Add sent-out material</button>
     <div class="photos docs" id="docs-sent"></div></div></div>
 
-  <div class="card"><h2>STOCK POSITION</h2><div class="body">
+  <div class="card" id="c-stk"><h2>6 · STOCK ON SITE</h2><div class="body">
+    <p class="hint dsr-why">Only type what was <b>used (Issued)</b> today – opening comes from yesterday and received from step 4.</p>
     <div class="rows" id="stk"></div><button class="add" data-add="stk">+ Add material</button><datalist id="units"></datalist>
-    <p class="hint">Closing stock = Opening + Received − Issued. It becomes the next day's opening stock when you tap "New day".</p></div></div>
+    <p class="hint">Closing = Opening + Received − Issued. Tomorrow it becomes the opening stock.</p></div></div>
 
-  <div class="card"><h2>WORK SUMMARY DETAILS</h2><div class="body">
+  <div class="card" id="c-work"><h2>7 · WORK DONE TODAY</h2><div class="body">
+    <p class="hint dsr-why">One line per activity, e.g. "Block work first floor – 60%".</p>
     <div class="rows" id="work"></div><button class="add" data-add="work">+ Add work item</button></div></div>
 
-  <div class="card"><h2>SITE PHOTOS <span class="tot" id="t-photos"></span></h2><div class="body">
+  <div class="card" id="c-photos"><h2>8 · SITE PHOTOS <span class="tot" id="t-photos"></span></h2><div class="body">
     <div class="photos" id="photos"></div>
     <label class="add" for="photo-input">+ Add photos (camera or gallery)</label>
     <input type="file" id="photo-input" accept="image/*" multiple hidden>
     <p class="hint">Photos are made smaller and saved in the company Google Drive folder. Tap Save after adding photos.</p>
   </div></div>
+  <div class="dsr-sum" id="dsr-sum"></div>
 </section>
 
 <section id="tab-saved" hidden>
-  <div class="card"><h2>SAVED REPORTS <span class="tot" id="t-saved"></span></h2>
+  <div class="card"><h2>PAST REPORTS <span class="tot" id="t-saved"></span></h2>
     <div class="body" style="padding-block:8px"><input id="search" placeholder="Search by date, site or work…" aria-label="Search reports"></div>
     <div class="list" id="list"></div>
   </div>
@@ -968,7 +988,7 @@ function render(){
   Object.keys(FIELDS).forEach(renderSec);
   cur.photos = cur.photos || [];
   renderPhotos(); renderDocs('rec'); renderDocs('sent');
-  totals();
+  totals(); dsrSiteList(); dsrSteps(); dsrRecBills();
 }
 function renderSec(sec){
   $(sec).innerHTML = cur[sec].map((row, i) => `<div class="row ${CLS[sec]}">
@@ -990,6 +1010,60 @@ function totals(){
   const [a,b] = t(cur.sub), [c,d] = t(cur.co);
   $('t-sub').textContent = `Skilled ${a} · Unskilled ${b}`;
   $('t-co').textContent  = coSum(cur.co);
+}
+
+/* ---------- easy mode for the Daily Site Report: steps, site picker, automatic links ---------- */
+const dsrMen = r => (r.sub || []).reduce((n, x) => n + num(x.skilled) + num(x.unskilled), 0) + (r.co || []).reduce((n, x) => n + num(x.skilled) + num(x.unskilled), 0);
+const dsrFilled = a => (a || []).filter(x => Object.keys(x).some(k => !/^(tin|tout|status|v|_auto)$/.test(k) && String(x[k] ?? '').trim()));
+function dsrSteps(){
+  if (!cur || !$('dsr-steps')) return;
+  const rec = dsrFilled(cur.rec).length, sent = dsrFilled(cur.sent).length, work = dsrFilled(cur.work).length;
+  const used = (cur.stk || []).filter(s => num(s.issue) || num(s.recd)).length, men = dsrMen(cur), ph = (cur.photos || []).length;
+  const st = [['c-day', 'Day & site', cur.site ? normSite(cur.site) : '', !!(cur.site && cur.date)], ['c-co', 'Workers', men ? men + ' men' : '', men > 0],
+    ['c-rec', 'Materials', rec + sent ? rec + ' in' + (sent ? ' · ' + sent + ' out' : '') : 'none', rec + sent > 0], ['c-stk', 'Stock', used ? used + ' moved' : '', used > 0],
+    ['c-work', 'Work done', work ? work + ' items' : '', work > 0], ['c-photos', 'Photos', ph ? String(ph) : '', ph > 0]];
+  $('dsr-steps').innerHTML = st.map(([id, l, v, ok], i) => `<button data-step="${id}" class="${ok ? 'ok' : ''}"><i>${ok ? '✓' : i + 1}</i><span>${l}<small>${esc(v || 'to do')}</small></span></button>`).join('');
+  const L = [`Report for <b>${esc(normSite(cur.site) || '–')}</b> on ${fmtDate(cur.date)}: ${men} men on site, ${rec} material${rec === 1 ? '' : 's'} received, ${work} work item${work === 1 ? '' : 's'}, ${ph} photo${ph === 1 ? '' : 's'}.`];
+  if (!work) L.push('<span class="warn">Add at least one line of work done (step 7).</span>');
+  if (!men) L.push('<span class="warn">No workers counted – check steps 2 and 3.</span>');
+  L.push('Saved to the shared Google Sheet; company labour is costed to the site in Expenses and the MD sees it in the daily summary.');
+  $('dsr-sum').innerHTML = `<b>When you save:</b><ul>${L.map(x => `<li>${x}</li>`).join('')}</ul>`;
+}
+let dsrT; const dsrRefresh = () => { clearTimeout(dsrT); dsrT = setTimeout(() => { dsrSteps(); dsrRecBills(); }, 200); };
+/* site picker: known sites with the client name from Expenses (when signed in there) */
+function dsrSiteList(){
+  const xs = (typeof X !== 'undefined' && X.d && X.d.sites) || [];
+  const codes = [...new Set(allSites().concat(xs.filter(s => s.status !== 'Completed').map(s => s.code)))].sort();
+  $('site-list').innerHTML = codes.map(c => { const s = xs.find(x => x.code === c); return `<option value="${esc(c)}">${s && s.client ? esc(c + ' – ' + s.client) : ''}</option>`; }).join('');
+  const code = normSite(cur && cur.site), s = xs.find(x => x.code === code);
+  $('f-site-note').innerHTML = s ? `${esc([s.client, s.project, s.plot ? 'Plot ' + s.plot : ''].filter(Boolean).join(' · '))}${xSeesAll() ? ' <button type="button" class="linkbtn" data-sitepage>Open site page</button>' : ''}` : (code && xs.length ? 'New site – not in the Expenses site list yet.' : '');
+}
+/* auto link 1: received materials -> Stock "Received" (only where you have not typed it yourself) */
+const dsrKey = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+function dsrStockMatch(mat, desc){
+  const w = String(mat || '').toUpperCase().split(/[^A-Z0-9]+/).filter(x => x.length >= 3 && !/\d/.test(x)), d = String(desc || '').toUpperCase();
+  if (!w.length || !d.includes(w[0])) return false;
+  const size = String(mat).toUpperCase().match(/\d+\s*(MM|M|KG|L|LTR|INCH|")?/); return !size || dsrKey(d).includes(dsrKey(size[0]));
+}
+function dsrSyncStock(){
+  let ch = false;
+  (cur.stk || []).forEach(s => { if (!s.mat || s._manual) return;
+    const tot = +(dsrFilled(cur.rec).filter(m => dsrStockMatch(s.mat, m.desc)).reduce((n, m) => n + (parseFloat(String(m.qty || '').replace(/,/g, '').match(/[\d.]+/) || 0) || 0), 0)).toFixed(3);
+    if (tot && (s.recd === '' || s.recd == null || s._auto)) { if (+s.recd !== tot) { s.recd = String(tot); ch = true; } s._auto = true; }
+    else if (!tot && s._auto) { s.recd = ''; delete s._auto; ch = true; } });
+  if (ch) { renderSec('stk'); dsrRefresh(); }
+}
+/* auto link 2: each received material shows whether its bill is in Expenses, with "Enter bill" */
+function dsrRecBills(){
+  const rows = $('rec') ? $('rec').querySelectorAll('.row') : [];
+  const ok = typeof X !== 'undefined' && X.d && X.pin, site = normSite(cur && cur.site);
+  rows.forEach((el, i) => { let b = el.querySelector('.rec-bill'); const m = cur.rec[i];
+    if (!ok || !m || !String(m.desc || '').trim() || !String(m.party || '').trim()) { if (b) b.remove(); return; }
+    if (!b) { b = document.createElement('div'); b.className = 'rec-bill'; el.appendChild(b); }
+    const bill = X.d.txns.find(t => t.type === 'EXPENSE' && xLiveTx(t) && (t.alloc === site || (t.splits || []).some(s => s.site === site)) && xSameParty(m.party, t.party)
+      && xDaysBetween(cur.date, t.date) >= -5 && xDaysBetween(cur.date, t.date) <= 45);
+    b.innerHTML = bill ? `<span class="ok">✓ Bill in Expenses: ${esc(bill.voucher)} · AED ${aed(bill.amount)}</span>`
+      : `<span>No bill in Expenses yet</span>${xCanAdd() ? ` <button type="button" class="linkbtn" data-billrec="${i}">Enter bill</button>` : ''}`; });
 }
 
 /* ---------- site photos ---------- */
@@ -1108,12 +1182,13 @@ document.addEventListener('input', e => {
     const [sec, i, k] = f.split(':');
     cur[sec][i][k] = t.value;
     if (sec==='co'){ coCount(cur.co[i]); if (k==='status') t.className = 'st-' + t.value; }
-    if (sec==='stk') t.closest('.row').querySelector('[data-close]').value = closing(cur.stk[i]);
+    if (sec==='stk') { if (k==='recd') { cur.stk[i]._manual = true; delete cur.stk[i]._auto; } t.closest('.row').querySelector('[data-close]').value = closing(cur.stk[i]); }
     if (sec==='sub'||sec==='co') totals();
-    dirty = true; return;
+    if (sec==='rec' && (k==='desc' || k==='qty')) dsrSyncStock();
+    dirty = true; dsrRefresh(); return;
   }
   const map = { 'f-date':'date','f-site':'site','f-eng':'eng','f-in':'tin','f-out':'tout' };
-  if (map[t.id]){ cur[map[t.id]] = t.value; dirty = true; }
+  if (map[t.id]){ cur[map[t.id]] = t.value; dirty = true; if (t.id === 'f-site' || t.id === 'f-date') { dsrSiteList(); dsrRefresh(); } }
   if (t.id==='s-pin'){ pin = t.value.trim(); keep(KEY_PIN, pin); }
   const smap = { 's-site':'site','s-eng':'eng','s-in':'tin','s-out':'tout' };
   if (smap[t.id]) settings[smap[t.id]] = t.value;
@@ -1135,9 +1210,18 @@ document.addEventListener('input', e => {
 document.addEventListener('click', async e => {
   const t = e.target.closest('button'); if (!t) return;
   const d = t.dataset;
-  if (d.add){ cur[d.add].push(blankRow(d.add)); renderSec(d.add); dirty = true;
+  if (d.step){ const c = $(d.step); if (c) { const y = c.getBoundingClientRect().top + scrollY - (document.querySelector('header').offsetHeight + 22); scrollTo({ top: y, behavior: 'smooth' }); } return; }
+  if (d.billrec != null){
+    if (!X.pin) { toast('Open Expenses once and sign in with your PIN, then try again'); return; }
+    const m = cur.rec[+d.billrec], q = String(m.qty || '');
+    X.preRec = { alloc: normSite(cur.site), party: String(m.party || '').trim(), item: String(m.desc || '').trim(), cat: 'Materials', date: cur.date,
+      lines: [{ desc: String(m.desc || '').trim(), qty: String(parseFloat(q.replace(/,/g, '')) || ''), unit: q.replace(/[\d.,\s]+/g, ' ').trim(), rate: '', amount: '' }] };
+    openExp(); xNew('EXPENSE'); toast('Expense started from the delivery – add the amount or scan the bill'); return;
+  }
+  if ('sitepage' in d){ X.siteCode = normSite(cur.site); X.view = 'site'; openExp(); return; }
+  if (d.add){ cur[d.add].push(blankRow(d.add)); renderSec(d.add); dirty = true; dsrRefresh();
     const rows = $(d.add).querySelectorAll('.row'); rows[rows.length-1].querySelector('input,textarea').focus(); }
-  if (d.del){ const [sec,i] = d.del.split(':'); cur[sec].splice(i,1); renderSec(sec); totals(); dirty = true; }
+  if (d.del){ const [sec,i] = d.del.split(':'); cur[sec].splice(i,1); renderSec(sec); totals(); dirty = true; if (sec === 'rec') dsrSyncStock(); dsrRefresh(); }
   if (d.delp != null){
     if (!await ask('Remove this photo from the report?', 'Remove')) return;
     cur.photos.splice(+d.delp, 1); renderPhotos(); dirty = true;
@@ -1164,7 +1248,8 @@ document.addEventListener('click', async e => {
 function showTab(tab){
   document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.tab===tab));
   ['form','saved','reg','settings'].forEach(x => $('tab-'+x).hidden = x!==tab);
-  $('bar').hidden = tab!=='form';
+  $('bar').hidden = tab!=='form'; $('dsr-steps').hidden = tab!=='form';
+  if (tab==='form' && cur) { dsrSiteList(); dsrSteps(); dsrRecBills(); }
   if (tab==='saved') renderList();
   if (tab==='reg') renderReg();
   if (tab==='settings'){ $('s-pin').value=pin; $('s-site').value=settings.site; $('s-eng').value=settings.eng; $('s-in').value=settings.tin; $('s-out').value=settings.tout; $('s-mats').value=settings.mats.map(m => { const u = unitOf(m); return u ? m + ' | ' + u : m; }).join('\n'); }
@@ -3035,13 +3120,15 @@ const XSTOP = new Set(['building', 'buildings', 'material', 'materials', 'tradin
 const xWords = s => String(s || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(w => w.length >= 3 && !XSTOP.has(w));
 const xSameParty = (a, b) => { const wa = xWords(a), wb = new Set(xWords(b)); return wa.length > 0 && wa.some(w => wb.has(w)); };
 const xQtyNum = q => parseFloat(String(q || '').replace(/,/g, '').match(/[\d.]+/) || 0) || 0;
+/* saved reports plus the report open in the Daily Site Report (even before it is saved) */
+const xAllReports = () => (reports || []).filter(r => !cur || r.id !== cur.id).concat(cur && cur.site ? [Object.assign({}, cur, { site: normSite(cur.site) })] : []);
 const xDaysBetween = (a, b) => Math.round((new Date(String(b).slice(0, 10)) - new Date(String(a).slice(0, 10))) / 864e5);
 /* deliveries written in the Daily Site Reports (materials received) for one site, each marked billed / not billed */
 function xDeliveries(site, days){
   const from = (() => { const d = new Date(today() + 'T12:00'); d.setDate(d.getDate() - (days || 60)); return d.toISOString().slice(0, 10); })();
   const exps = X.d.txns.filter(t => t.type === 'EXPENSE' && xLiveTx(t) && (t.alloc === site || (t.splits || []).some(s => s.site === site)));
   const out = [];
-  (typeof reports !== 'undefined' ? reports : []).forEach(r => { if (normSite(r.site) !== site || r.date < from) return;
+  xAllReports().forEach(r => { if (normSite(r.site) !== site || r.date < from) return;
     (r.rec || []).forEach(m => { if (!String(m.desc || '').trim()) return;
       const bill = exps.find(t => xSameParty(m.party, t.party) && xDaysBetween(r.date, t.date) >= -5 && xDaysBetween(r.date, t.date) <= 45);
       out.push({ date: r.date, desc: m.desc, qty: m.qty, party: m.party, bill }); }); });
@@ -3052,7 +3139,7 @@ function xDeliveryCheck(f){
   if (f.type !== 'EXPENSE' || !f.alloc || !String(f.party || '').trim() || !/Material|Scaffold|Plant|Transport/i.test(f.cat || 'Materials')) return '';
   const site = f.alloc; if (!X.d.sites.some(s => s.code === site)) return '';
   const list = [];
-  (typeof reports !== 'undefined' ? reports : []).forEach(r => { if (normSite(r.site) !== site) return; const dd = xDaysBetween(r.date, f.date || today());
+  xAllReports().forEach(r => { if (normSite(r.site) !== site) return; const dd = xDaysBetween(r.date, f.date || today());
     if (dd < -3 || dd > 45) return; (r.rec || []).forEach(m => { if (String(m.desc || '').trim() && xSameParty(m.party, f.party)) list.push({ date: r.date, desc: m.desc, qty: m.qty }); }); });
   if (!list.length) return `<div class="x-match none">No delivery from <b>${esc(f.party)}</b> to ${esc(site)} in the Daily Site Reports (last 45 days). Check the material really arrived on site.</div>`;
   const lines = (f.lines || []).filter(l => l.desc).length ? f.lines.filter(l => l.desc) : (f.item ? [{ desc: f.item, qty: f.qty }] : []);
