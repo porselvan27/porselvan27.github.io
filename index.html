@@ -1993,7 +1993,7 @@ function xHome(){
     ${xSeesAll() && Object.keys(d.balances).length > 1 ? `<div class="x-sec">All cash boxes</div><div class="x-boxes">${Object.keys(d.balances).map(k =>
       `<div><small>${esc(k)}</small><b class="${d.balances[k].bal < 0 ? 'neg' : ''}">${aed(d.balances[k].bal)}</b><small>In ${aed(d.balances[k].in)} · Out ${aed(d.balances[k].out)}</small></div>`).join('')}</div>` : ''}
     <div class="x-sec">Latest entries <button data-x="list">See all</button></div>
-    <div class="x-list">${scope.slice(0, 6).map(xRow).join('') || '<div class="empty">No entries yet. Tap Expense or Cash received to add the first one.</div>'}</div>
+    <div class="x-list">${scope.filter(t => t.status !== 'Cancelled').slice(0, 6).map(xRow).join('') || '<div class="empty">No entries yet. Tap Expense or Cash received to add the first one.</div>'}</div>
     ${xIsAdmin() ? xMonths() : ''}`;
 }
 /* ---------- daily cash count ---------- */
@@ -2226,8 +2226,11 @@ function xMonths(){
 function xList(){
   const d = X.d, F = X.filt;
   const months = [...new Set(d.txns.map(t => t.date.slice(0, 7)))].sort().reverse();
-  const rows = d.txns.filter(t => (!F.month || t.date.slice(0, 7) === F.month) && (!F.site || t.alloc === F.site) && (!F.cat || t.cat === F.cat)
+  let rows = d.txns.filter(t => (!F.month || t.date.slice(0, 7) === F.month) && (!F.site || t.alloc === F.site) && (!F.cat || t.cat === F.cat)
     && (!F.status || t.status === F.status) && (!F.q || JSON.stringify(t).toLowerCase().includes(F.q.toLowerCase())));
+  // cancelled entries are hidden unless asked for (status filter "Cancelled" or the "Show cancelled" link)
+  const nCx = F.status ? 0 : rows.filter(t => t.status === 'Cancelled').length;
+  if (nCx && !X.showCx) rows = rows.filter(t => t.status !== 'Cancelled');
   const live = rows.filter(t => !/Cancelled|Rejected/.test(t.status));
   const out = live.filter(t => t.type === 'EXPENSE').reduce((s, t) => s + t.amount, 0), inn = live.filter(t => t.type === 'CASH RECEIVED').reduce((s, t) => s + t.amount, 0);
   const opt = (v, l, cur) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(l)}</option>`;
@@ -2242,7 +2245,8 @@ function xList(){
       <select data-xf="status">${opt('', 'All status', F.status)}${['Approved', 'Pending MD', 'Rejected', 'Cancelled', 'Waiting confirmation', 'Confirmed'].map(s => opt(s, s, F.status)).join('')}</select></div>
     <input data-xf="q" value="${esc(F.q)}" placeholder="Search item, party, voucher, staff…" aria-label="Search entries" style="margin-bottom:10px">
     <div class="x-tot"><span>${rows.length} entries</span><span style="color:var(--danger)">Out ${aed(out)}</span><span style="color:var(--ok)">In ${aed(inn)}</span></div>
-    ${list || '<div class="empty">No entries match.</div>'}`;
+    ${list || '<div class="empty">No entries match.</div>'}
+    ${nCx ? `<button class="linkbtn" data-xshowcx style="margin-top:12px">${X.showCx ? 'Hide' : 'Show'} ${nCx} cancelled ${nCx === 1 ? 'entry' : 'entries'}</button>` : ''}`;
 }
 function xDetail(id){
   const t = X.d.txns.find(x => x.id === id); if (!t) return;
@@ -3672,6 +3676,7 @@ $('exp').addEventListener('click', async e => {
     try { X.d = await server('expReimburse', ids, box, X.pin); keep('exp.cache', X.d); toast('Reimbursed to ' + p); xReimb(); } catch (er) { toast(errText(er)); }
     return;
   }
+  if ('xshowcx' in D) { X.showCx = !X.showCx; xList(); return; }
   if (D.xok) return xDecide(D.xok, true);
   if (D.xrej) return xDecide(D.xrej, false);
   if (D.xprint) return xVoucher(X.d.txns.find(t => t.id === D.xprint));
