@@ -2415,10 +2415,15 @@ async function xSave(){
   if (f.receipts.some(p => p.uploading)) { err.textContent = 'Wait for the photo to finish uploading.'; return; }
   btn.disabled = true; btn.textContent = 'Saving…'; err.textContent = '';
   try {
+    const before = new Set((X.d.txns || []).map(t => t.id));
     X.d = await server('expSave', f, X.pin); keep('exp.cache', X.d);
     if (f.type === 'EXPENSE') keep('exp.last', { alloc: f.alloc, cat: f.cat });
     toast(f.id ? 'Changes saved' : ({ EXPENSE: 'Expense saved', 'CLIENT RECEIPT': 'Client receipt saved', BANK: 'Bank entry saved', TRANSFER: 'Handover sent', RECOVERY: 'Recovery saved' })[f.type] || 'Cash received saved');
-    X.f = null; const rt = X.returnTo; X.returnTo = null; xGo(rt || 'home');
+    X.f = null; const rt = X.returnTo; X.returnTo = null;
+    // a new entry: show it and open its voucher straight away (not inside a statement check, where several are added in a row)
+    const added = !f.id && !rt ? X.d.txns.find(t => !before.has(t.id) && t.type === f.type && t.by === X.d.user.name) : null;
+    if (added) { X.view = 'list'; xDetail(added.id); xVoucher(added); return; }
+    xGo(rt || 'home');
   } catch (e) {
     const m = errText(e);
     if (/^DUPLICATE\|/.test(m)) {                       // same date + party + amount already exists
