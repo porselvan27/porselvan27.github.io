@@ -1992,8 +1992,9 @@ function xHome(){
     })()}
     ${xSeesAll() && Object.keys(d.balances).length > 1 ? `<div class="x-sec">All cash boxes</div><div class="x-boxes">${Object.keys(d.balances).map(k =>
       `<div><small>${esc(k)}</small><b class="${d.balances[k].bal < 0 ? 'neg' : ''}">${aed(d.balances[k].bal)}</b><small>In ${aed(d.balances[k].in)} · Out ${aed(d.balances[k].out)}</small></div>`).join('')}</div>` : ''}
-    <div class="x-sec">Latest entries <button data-x="list">See all</button></div>
-    <div class="x-list">${scope.filter(t => t.status !== 'Cancelled').slice(0, 6).map(xRow).join('') || '<div class="empty">No entries yet. Tap Expense or Cash received to add the first one.</div>'}</div>
+    ${(() => { const td = scope.filter(t => t.date === today() && t.status !== 'Cancelled');
+      return `<div class="x-sec">Today's entries${td.length ? ' (' + td.length + ')' : ''} <button data-x="list">See all</button></div>
+    <div class="x-list">${td.map(xRow).join('') || '<div class="empty">No entries today. Older entries are in See all.</div>'}</div>`; })()}
     ${xIsAdmin() ? xMonths() : ''}`;
 }
 /* ---------- daily cash count ---------- */
