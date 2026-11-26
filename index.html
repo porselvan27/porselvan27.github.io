@@ -471,6 +471,7 @@ header.mini .top .mark{width:34px;height:34px;border-radius:10px}
   header.mini .top h1{font-size:15px}.sync{padding:4px 8px;font-size:0;gap:0}.sync::before{margin:0}.hbtn{width:34px;height:34px}}
 /* ---------- EXPENSES app ---------- */
 #exp{position:fixed;inset:0;z-index:41;overflow-y:auto;background:var(--bg);-webkit-overflow-scrolling:touch;transition:opacity .4s var(--ease),transform .5s var(--ease)}
+#exp:not([hidden]){animation-fill-mode:backwards}  /* no transform left behind, so the bottom button bar stays fixed while scrolling */
 body:not(.at-exp) #exp{opacity:0;transform:translateY(24px);visibility:hidden;pointer-events:none}
 body.at-exp{overflow:hidden}body.at-exp .bar{display:none!important}
 .x-head{position:sticky;top:0;z-index:5;background:linear-gradient(120deg,#0a1f42,#0b2a5b 45%,#1d4f9c);color:#fff;padding:calc(10px + env(safe-area-inset-top)) 16px 10px;box-shadow:0 6px 20px -10px #0009}
@@ -554,6 +555,14 @@ body.at-exp{overflow:hidden}body.at-exp .bar{display:none!important}
 .x-badge{display:inline-block;min-width:20px;padding:1px 6px;border-radius:999px;background:#f5a524;color:#0b2a5b;font-size:11.5px;font-weight:800;margin-left:4px}
 .x-pendbar{width:100%;display:flex;align-items:center;gap:8px;border:0;border-radius:16px;padding:14px 16px;margin-bottom:6px;background:#fff3d6;color:#8a5a00;font:600 14px var(--f-body);cursor:pointer;text-align:left}
 .x-pendbar b{font:800 20px var(--f-display)}.x-pendbar span{margin-left:auto;background:#8a5a00;color:#fff;border-radius:999px;padding:5px 12px;font-size:12px}
+.x-al{display:grid;gap:8px;margin-bottom:6px}
+.x-al button{position:relative;display:block;width:100%;text-align:left;border:0;border-radius:14px;padding:11px 40px 11px 16px;background:#fff3d6;color:#8a5a00;font:inherit;cursor:pointer;
+  border-left:5px solid #f5a524;animation:rowIn .45s var(--ease) both;transition:transform .2s var(--ease)}
+.x-al button:active{transform:scale(.98)}
+.x-al button::after{content:"›";position:absolute;right:16px;top:50%;transform:translateY(-52%);font:700 22px var(--f-display);opacity:.7}
+.x-al button.bad{background:#fdecea;color:#a93226;border-left-color:#e0604c}
+.x-al b{display:block;font-size:14px}.x-al small{display:block;font-size:12px;opacity:.85;margin-top:1px}
+.x-save a.btn{text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
 .x-ap .body{display:grid;gap:10px}
 .x-ap-top{display:flex;gap:10px;justify-content:space-between}.x-ap-top b{display:block;font-size:15px}
 .x-ap-top small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
@@ -1757,7 +1766,7 @@ const xCanApprove = () => X.d && /Admin|Approver/.test(X.d.user.role);
 const xPending = () => X.d.txns.filter(t => t.status === 'Pending MD');
 const xClosed = d => (X.d.closed || []).indexOf(String(d || '').slice(0, 7)) >= 0;
 function xGo(v){
-  X.view = v; $('x-nav').hidden = $('x-user').hidden = false;
+  const was = X.view; X.view = v; $('x-nav').hidden = $('x-user').hidden = false;
   $('x-user').textContent = X.d.user.name.split(' ')[0] + ' · ' + X.d.user.role;
   const n = xPending().length;
   $('x-nav').innerHTML = `<button data-x="home">Home</button><button data-x="list">Entries</button>`
@@ -1766,6 +1775,7 @@ function xGo(v){
   if (v === 'home') xHome(); else if (v === 'list') xList(); else if (v === 'appr') xAppr();
   else if (v === 'count') xCount(); else if (v === 'adv') xAdv(); else if (v === 'reimb') xReimb();
   else if (v === 'cost') xCost(); else if (v === 'budget') xBudget(); else if (v === 'veh') xVeh();
+  else if (v === 'miss') xMiss(); else if (v === 'sum') { if (was !== 'sum') { X.sum = {}; X.sumDate = today(); } xSum(); }
   $('exp').scrollTop = 0;
   if (X.deep) { const t = X.d.txns.find(x => x.voucher === X.deep); X.deep = ''; if (t) xDetail(t.id); else toast('Voucher not found or not visible to you'); }
 }
@@ -1825,7 +1835,9 @@ function xHome(){
       <div><b>${aed(sum(live.filter(t => t.date.slice(0, 7) === m0)))}</b><small>Spent this month</small></div>
       <div><b>${pend}</b><small>Waiting for MD</small></div></div>
     ${xCanAdd() ? `<div class="x-big"><button class="out" data-xnew="EXPENSE">Expense</button><button class="in" data-xnew="CASH RECEIVED">Cash received</button></div>` : ''}
+    ${xAlertsHtml()}
     <div class="x-tools">
+      ${xSeesAll() ? `<button data-x="sum" style="--ic:var(--i-file)"><b>Daily summary</b><small>Today at a glance · share on WhatsApp</small></button>` : ''}
       ${xCanAdd() && box ? `<button data-xnew="TRANSFER" style="--ic:var(--i-arrow)"><b>Hand over cash</b><small>Give cash to another person</small></button>` : ''}
       ${box ? `<button data-x="count" style="--ic:var(--i-check)"><b>Count cash</b><small>${(() => { const c = (d.counts || []).find(c => c.box === box); return c ? 'Last: ' + dmy(c.date) + (c.diff ? ' · diff ' + aed(c.diff) : ' · OK') : 'Not counted yet'; })()}</small></button>` : ''}
       <button data-x="adv" style="--ic:var(--i-users)"><b>Staff advances</b><small>${(() => { const a = xAdvances().filter(p => p.due > 0); return a.length ? a.length + ' owe AED ' + aed(a.reduce((s, p) => s + p.due, 0)) : 'Nothing outstanding'; })()}</small></button>
@@ -1835,7 +1847,6 @@ function xHome(){
     </div>
     ${xSeesAll() && Object.keys(d.balances).length > 1 ? `<div class="x-sec">All cash boxes</div><div class="x-boxes">${Object.keys(d.balances).map(k =>
       `<div><small>${esc(k)}</small><b class="${d.balances[k].bal < 0 ? 'neg' : ''}">${aed(d.balances[k].bal)}</b><small>In ${aed(d.balances[k].in)} · Out ${aed(d.balances[k].out)}</small></div>`).join('')}</div>` : ''}
-    ${xCanApprove() && pend ? `<button class="x-pendbar" data-x="appr"><b>${pend}</b> waiting for approval · AED ${aed(xPending().reduce((s, t) => s + t.amount, 0))}<span>Open</span></button>` : ''}
     <div class="x-sec">Latest entries <button data-x="list">See all</button></div>
     <div class="x-list">${scope.slice(0, 6).map(xRow).join('') || '<div class="empty">No entries yet. Tap Expense or Cash received to add the first one.</div>'}</div>
     ${xIsAdmin() ? xMonths() : ''}`;
@@ -2123,6 +2134,7 @@ function xDetail(id){
     </div></div>
     <div class="x-save"><div><button class="btn sec" data-xbackto="${X.prev === 'appr' ? 'appr' : 'list'}">Back</button>
       ${t.status !== 'Cancelled' ? `<button class="btn sec" data-xprint="${esc(t.id)}">Voucher</button>` : ''}
+      ${out && t.status !== 'Cancelled' && (mine || xIsAdmin()) && !(t.receipts || []).some(p => p && p.id) ? `<button class="btn sec" data-xaddrc2="${esc(t.id)}">Add receipt</button>` : ''}
       ${can ? `<button class="btn sec" data-xcancel="${esc(t.id)}" style="color:var(--danger)">Cancel</button><button class="btn" data-xedit="${esc(t.id)}">Edit</button>` : ''}</div></div>`;
   $('exp').scrollTop = 0;
 }
@@ -2308,6 +2320,88 @@ async function xVoucher(t){
   waitImages($('sheet')).then(() => print());
 }
 
+/* ---------- step 4: reminders, missing receipts, daily summary ---------- */
+const xReal = t => !/^TEST/i.test(t.box || '') && !t.batch;
+const xAge = d => Math.max(0, Math.round((new Date(today()) - new Date(String(d).slice(0, 10))) / 864e5));
+const xSumAmt = a => a.reduce((s, t) => s + t.amount, 0);
+/* expenses above the receipt limit that still have no receipt photo (a reason was typed instead) */
+function xMissing(){
+  const lim = X.d.settings.receiptLimit || 100, me = X.d.user.name;
+  return X.d.txns.filter(t => xReal(t) && xLive2(t) && t.amount > lim && !(t.receipts || []).some(p => p && p.id) && (xSeesAll() || t.by === me))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+function xAlerts(){
+  const d = X.d, a = [], box = xBox(), t0 = today(), me = d.user.name;
+  if (xCanApprove()) { const p = xPending(); if (p.length) { const old = Math.max(...p.map(t => xAge(t.date)));
+    a.push({ go: 'appr', lvl: old >= 3 ? 'bad' : '', t: `${p.length} waiting for your approval`, s: `AED ${aed(xSumAmt(p))}${old >= 1 ? ` · oldest ${old} day${old > 1 ? 's' : ''}` : ''}` }); } }
+  const m = xMissing(); if (m.length) a.push({ go: 'miss', lvl: m.some(t => xAge(t.date) >= 7) ? 'bad' : '', t: `${m.length} receipt photo${m.length > 1 ? 's' : ''} missing`,
+    s: `AED ${aed(xSumAmt(m))} · ${xSeesAll() ? 'follow up with the team' : 'add the photos'}` });
+  const rej = d.txns.filter(t => t.status === 'Rejected' && t.by === me && xReal(t));
+  if (rej.length) a.push({ fs: 'Rejected', lvl: 'bad', t: `${rej.length} rejected – correct and resubmit`, s: `AED ${aed(xSumAmt(rej))}` });
+  const sent = d.txns.filter(t => t.type === 'TRANSFER' && t.status === 'Waiting confirmation' && t.box === box && xAge(t.date) >= 1);
+  if (sent.length) a.push({ fs: 'Waiting confirmation', t: `${sent.length} handover${sent.length > 1 ? 's' : ''} not confirmed yet`, s: 'Remind the receiver to tap Confirm received' });
+  if (box && !/^TEST/i.test(box) && t0 >= (d.settings.goLive || '') && !(d.counts || []).some(c => c.box === box && c.date === t0))
+    a.push({ go: 'count', t: 'Cash not counted today', s: 'Count ' + box + ' before you finish the day' });
+  return a;
+}
+const xAlertsHtml = () => { const a = xAlerts(); return a.length ? `<div class="x-sec">Reminders</div><div class="x-al">${a.map(x =>
+  `<button class="${x.lvl || ''}" ${x.go ? `data-x="${x.go}"` : `data-xfs="${esc(x.fs)}"`}><b>${esc(x.t)}</b><small>${esc(x.s)}</small></button>`).join('')}</div>` : ''; };
+function xMiss(){
+  const list = xMissing(), me = X.d.user.name;
+  xMain().innerHTML = `<div class="x-tot"><span>${list.length} without receipt photo</span><span style="color:var(--danger)">AED ${aed(xSumAmt(list))}</span></div>
+    ${list.map(t => `<div class="card x-ap"><div class="body">
+      <div class="x-ap-top"><div><b>${esc(t.item || t.cat)}</b><small>${esc(t.voucher)} · ${dmy(t.date)} · ${esc(t.alloc)} · by ${esc(t.by)}</small>
+        <small>${t.noRcpt ? 'Reason: ' + esc(t.noRcpt) : 'No reason given'}${xAge(t.date) ? ' · ' + xAge(t.date) + ' day' + (xAge(t.date) > 1 ? 's' : '') + ' ago' : ' · today'}</small></div>
+        <div class="x-ap-amt">AED ${aed(t.amount)}</div></div>
+      <div class="x-ap-btns" style="grid-template-columns:1fr 1.4fr"><button class="btn sec" data-xopen="${esc(t.id)}">Details</button>
+        ${t.by === me || xIsAdmin() ? `<button class="btn ok" data-xaddrc2="${esc(t.id)}">Add receipt photo</button>` : '<span></span>'}</div>
+    </div></div>`).join('') || '<div class="empty">All receipts are in. Nothing missing.</div>'}
+    <p class="hint" style="margin-top:12px">Expenses above AED ${aed(X.d.settings.receiptLimit)} need a receipt photo. Adding a photo later changes nothing else in the entry.</p>
+    <div class="x-save"><div><button class="btn sec" data-x="home">Back</button></div></div>`;
+}
+/* MD daily summary (built on the server, same as the 8 pm email) */
+function xSum(){
+  const date = X.sumDate || today(), s = (X.sum || {})[date];
+  const head = `<div class="x-filt" style="grid-template-columns:1fr auto auto"><input type="date" id="xs-date" value="${date}" max="${today()}" aria-label="Summary date">
+    <button class="btn sec" data-xsday="-1" aria-label="Day before">‹</button><button class="btn sec" data-xsday="1" aria-label="Next day"${date >= today() ? ' disabled' : ''}>›</button></div>`;
+  if (!s) { xMain().innerHTML = head + '<div class="empty">Loading the summary…</div>';
+    server('expDaily', date, X.pin).then(r => { (X.sum = X.sum || {})[date] = r; if (X.view === 'sum' && (X.sumDate || today()) === date) xSum(); })
+      .catch(er => { if (X.view === 'sum') xMain().innerHTML = head + `<div class="empty">${esc(errText(er))}<br><br><button class="btn" data-x="sum">Try again</button></div>`; });
+    return; }
+  const tbl = (rows, cols) => rows.length ? `<div class="x-list">${rows.map(cols).join('')}</div>` : '';
+  const it = (l, sub, amt, cls) => `<div class="x-it" style="cursor:default"><span class="t"><b>${l}</b>${sub ? `<small>${sub}</small>` : ''}</span><span class="a ${cls || ''}">${amt}</span></div>`;
+  const sites = Object.keys(s.bySite).sort(), cats = Object.keys(s.byCat).sort((a, b) => s.byCat[b] - s.byCat[a]);
+  xMain().innerHTML = head + `
+    <div class="x-stats"><div><b>${aed(s.spent)}</b><small>Spent · ${s.entries} entries</small></div><div><b>${aed(s.received)}</b><small>Cash received</small></div>
+      <div><b>${s.pending.length}</b><small>To approve</small></div></div>
+    ${sites.length ? `<div class="x-sec">Spent by site</div>${tbl(sites, k => it(esc(k), '', aed(s.bySite[k]), 'out'))}` : '<div class="empty" style="padding:14px">No expenses on this day.</div>'}
+    ${cats.length ? `<div class="x-sec">By category</div>${tbl(cats, k => it(esc(k), '', aed(s.byCat[k])))}` : ''}
+    ${s.big.length ? `<div class="x-sec">Big payments (AED ${aed(X.d.settings.approvalLimit)}+)</div>${tbl(s.big, t => it(esc(t.item), esc(t.voucher + ' · ' + t.site + ' · ' + t.status), aed(t.amount), 'out'))}` : ''}
+    ${s.handovers.length ? `<div class="x-sec">Cash handovers</div>${tbl(s.handovers, t => it(esc(t.from + ' → ' + t.to), esc(t.voucher + ' · ' + t.status), aed(t.amount)))}` : ''}
+    <div class="x-sec">Waiting for approval${s.pending.length ? ` <button data-x="appr">Open</button>` : ''}</div>
+    ${tbl(s.pending, t => it(esc(t.item), esc(t.voucher + ' · ' + t.site + ' · by ' + t.by + (t.days ? ' · ' + t.days + ' days' : '')), aed(t.amount), t.days >= 3 ? 'out' : '')) || '<div class="empty" style="padding:14px">Nothing waiting.</div>'}
+    ${s.waiting.length ? `<div class="x-sec">Handovers not confirmed</div>${tbl(s.waiting, t => it(esc(t.from + ' → ' + t.to), esc(t.voucher + (t.days ? ' · ' + t.days + ' days' : '')), aed(t.amount)))}` : ''}
+    <div class="x-sec">Missing receipt photos${s.missing.length ? ` <button data-x="miss">Open</button>` : ''}</div>
+    ${tbl(s.missing.slice(0, 12), t => it(esc(t.item), esc(t.voucher + ' · by ' + t.by + (t.reason ? ' · ' + t.reason : '')), aed(t.amount), 'out')) || '<div class="empty" style="padding:14px">None missing.</div>'}
+    <div class="x-sec">Cash in hand</div>
+    <div class="x-boxes">${s.boxes.map(b => { const c = s.counts.find(c => c.box === b.name);
+      return `<div><small>${esc(b.name)}</small><b class="${b.bal < 0 ? 'neg' : ''}">${aed(b.bal)}</b><small>${c ? (c.diff ? 'Counted · diff ' + aed(c.diff) : 'Counted · OK') : 'Not counted'}</small></div>`; }).join('')}</div>
+    ${s.budget.length ? `<div class="x-sec">Budget warnings</div>${tbl(s.budget, b => it(esc(b.site), aed(b.cost) + ' of ' + aed(b.budget) + xBar(b.cost, b.budget), b.pct + '%', b.pct >= 100 ? 'out' : ''))}` : ''}
+    <div class="x-sec">Daily Site Reports</div><p class="hint" style="margin:0 0 8px">${s.dsr.length ? 'Received for ' + s.dsr.map(esc).join(', ') : 'No Daily Site Report saved for this day.'}</p>
+    ${s.emailOn ? '<p class="x-md" style="margin-top:12px">This summary is also emailed every evening at 8 pm.</p>' : ''}
+    <div class="x-save"><div><button class="btn sec" data-x="home">Back</button><button class="btn sec" data-xsprint>Print</button>
+      <a class="btn ok" href="https://wa.me/?text=${encodeURIComponent(s.text)}" target="_blank" rel="noopener">Share on WhatsApp</a></div></div>`;
+}
+function xSumPrint(){
+  const s = X.sum[X.sumDate || today()]; if (!s) return;
+  $('sheet').innerHTML = `<style>@page{size:A4 portrait;margin:12mm}.ds{font:10pt Arial,sans-serif;color:#18212f}
+    .ds img{width:100%;height:24mm;object-fit:contain;border-bottom:3px solid #c9a227}.ds h1{background:#0b2a5b;color:#fff;font:700 13pt Arial;letter-spacing:.06em;margin:0 0 8px;padding:6px 10px}
+    .ds pre{font:9.5pt/1.5 Consolas,monospace;white-space:pre-wrap;margin:0}.ds .ft{margin-top:10px;font-size:8pt;color:#5d6a7e}</style>
+    <div class="ds"><img src="${LOGO}" alt=""><h1>DAILY SUMMARY – ${dmy(s.date)}</h1><pre>${esc(s.text.split('\n').slice(2).join('\n'))}</pre>
+    <p class="ft">Printed ${dmy(today())} from the Al Tarwi app · Al Tarwi Building Contracting · Trade License No. 53254 · Al Dhait, Ras Al Khaimah</p></div>`;
+  waitImages($('sheet')).then(() => print());
+}
+
 /* ---------- events ---------- */
 $('exp').addEventListener('click', async e => {
   const b = e.target.closest('button,[data-x]'); if (!b) return;
@@ -2342,6 +2436,11 @@ $('exp').addEventListener('click', async e => {
     catch (er) { toast(errText(er)); b.disabled = false; b.textContent = 'Save count'; }
     return;
   }
+  if (D.xfs) { X.filt = { month: '', site: '', cat: '', status: D.xfs, q: '' }; return xGo('list'); }
+  if (D.xaddrc2) { X.addRc = D.xaddrc2; $('x-photo').click(); return; }
+  if (D.xsday) { const d = new Date((X.sumDate || today()) + 'T12:00:00'); d.setDate(d.getDate() + +D.xsday);
+    const v = d.toISOString().slice(0, 10); if (v > today()) return; X.sumDate = v; xSum(); return; }
+  if ('xsprint' in D) return xSumPrint();
   if ('xcostall' in D) { X.costSite = ''; return xGo('cost'); }
   if (D.xsite) { X.costSite = D.xsite; xCost(); $('exp').scrollTop = 0; return; }
   if ('xcostback' in D) { X.costSite = ''; xCost(); return; }
@@ -2400,6 +2499,7 @@ $('exp').addEventListener('input', e => {
   if (t.dataset.xi && X.f) { const k = t.dataset.xi; X.f[k] = t.type === 'checkbox' ? t.checked : t.value;
     if (k === 'cat' || k === 'alloc' || k === 'vat' || (k === 'box' && X.f.type === 'TRANSFER')) { xForm(); return; } xLive(); return; }
   if (t.id === 'xc-box') { X.countBox = t.value; xCount(); return; }
+  if (t.id === 'xs-date') { if (t.value && t.value <= today()) { X.sumDate = t.value; xSum(); } return; }
   if (t.id === 'xk-per') { X.costPer = t.value; xCost(); return; }
   if (t.id === 'xv-per') { X.vehPer = t.value; xVeh(); return; }
   if (t.id === 'xc-amt') { const b = (X.d.balances[X.countBox] || { bal: 0 }).bal, diff = xr2(xr2(t.value) - b);
@@ -2412,7 +2512,16 @@ $('exp').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id
 { const v = decodeURIComponent((location.hash.match(/^#v=([\w-]+)/) || [])[1] || '');
   if (v) { X.deep = v; history.replaceState(null, '', location.pathname + location.search); setTimeout(openExp, 500); } }
 $('x-photo').onchange = async e => {
-  const file = e.target.files[0]; e.target.value = ''; if (!file || !X.f) return;
+  const file = e.target.files[0]; e.target.value = '';
+  if (file && !X.f && X.addRc) {   // add a receipt to a saved entry (missing receipts list / entry details)
+    const id = X.addRc; X.addRc = ''; toast('Uploading receipt…');
+    try { const r = await server('expUpload', await shrink(file, 1600, 0.75), X.pin);
+      X.d = await server('expAddReceipt', id, [{ id: r.id }], X.pin); keep('exp.cache', X.d); toast('Receipt added');
+      if (X.view === 'detail') xDetail(id); else xGo(X.view === 'miss' ? 'miss' : X.view); }
+    catch (er) { toast('Receipt not added: ' + errText(er)); }
+    return;
+  }
+  if (!file || !X.f) return;
   const p = { uploading: true, src: '' }; X.f.receipts.push(p);
   try { p.src = await shrink(file, 1600, 0.75); xRc();
     const r = await server('expUpload', p.src, X.pin); p.id = r.id; p.uploading = false; xRc(); }
