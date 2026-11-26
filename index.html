@@ -2619,6 +2619,7 @@ function lhPrint(title, meta, body, opt = {}){
     #sheet .lh-sec{font:800 7.6pt 'Segoe UI',Arial;letter-spacing:.12em;color:#1D7FD1;text-transform:uppercase;margin:4mm 0 1.5mm}
     #sheet .lh-tb tr,#sheet .lh-sig,#sheet .lh-tot{break-inside:avoid}
     #sheet .lh-h{margin-bottom:-4mm}
+    ${opt.a5 ? '@page{size:A5 portrait;margin:0} #sheet .lh{zoom:.7048}' : ''}
   </style>
   <div class="lh">${opt.stamp ? `<div class="lh-stamp">${esc(opt.stamp)}</div>` : ''}
     <img class="lh-h" src="${LH_HEAD}" alt="Al Tarwi Building Contracting">
@@ -2660,7 +2661,7 @@ async function xVoucher(t){
     ${lhSig(out ? [['Prepared by', t.by], ['Checked by', ''], ['Approved by', t.apBy && !/Imported/.test(t.apBy) ? t.apBy : ''], ["Receiver's signature", '']]
       : cr ? [['Received by', t.by], ['Checked by', ''], ['For Al Tarwi Building Contracting', '']]
       : [['Prepared by', t.by], ['Checked by', ''], [t.type === 'TRANSFER' ? 'Received by' : 'Approved by', t.type === 'TRANSFER' && t.apBy ? t.apBy : '']])}`,
-    { stamp });
+    { stamp, a5: true });                                   // vouchers print on A5 (same design, scaled 148/210)
 }
 
 /* ---------- site details ---------- */
