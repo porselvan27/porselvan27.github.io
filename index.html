@@ -112,6 +112,23 @@ label.add{display:block;text-align:center}
 .sites .btn small{font-weight:400;opacity:.75}
 /* ---------- PDF / print: same look as the app (always light, colours kept) ---------- */
 #sheet{display:none}
+/* Expenses documents: preview on screen with Share on WhatsApp / Print / Close */
+@media screen{
+  body.docview{overflow:hidden}
+  body.docview #sheet{display:block;position:fixed;inset:0;z-index:75;overflow:auto;background:#525c6e;padding:14px 0 96px;-webkit-overflow-scrolling:touch;color:#18212f;font:10.5pt/1.35 var(--f-body)}
+  body.docview #sheet .doc-page{width:210mm;margin:0 auto;background:#fff;box-shadow:0 8px 28px #0007}
+  body.docview #sheet .doc-inner{background:#fff}
+  #docbar{position:fixed;left:0;right:0;bottom:0;z-index:76;display:flex;gap:8px;justify-content:center;padding:12px 12px calc(12px + env(safe-area-inset-bottom));background:#0f1733ee;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+  #docbar[hidden]{display:none}
+  #docbar .btn{flex:1;max-width:220px}
+  #docbar #doc-wa{background:#25D366;border-color:#25D366;color:#fff}
+  body.docview #sheet .doc-page:not(.doc-a5) .lh{position:relative}
+  body.docview #sheet .doc-page:not(.doc-a5) .lh-mf{position:absolute!important;left:0;right:0;bottom:0;width:auto}
+  body.docview #sheet .doc-pad{padding:10mm}
+  body.docshot #sheet .lh-wm{display:none}
+  body.docshot #sheet .ar,body.docshot #sheet [dir=rtl]{letter-spacing:0!important}
+}
+@media print{#docbar{display:none!important}#sheet .doc-page{zoom:1!important;width:auto!important;margin:0!important;box-shadow:none!important}}
 @media print{
   @page{size:A4 portrait;margin:9mm}
   html,body{background:#fff!important}
@@ -886,6 +903,7 @@ button.x-bk{text-align:left;border:0;cursor:pointer;font:inherit;color:inherit}
   <div class="acts"><button class="btn sec" id="pdf-print">Print from this screen</button><button class="btn sec" id="pdf-close">Close</button></div>
 </div></div>
 <div id="sheet"></div>
+<div id="docbar" hidden><button class="btn ok" id="doc-wa">Share on WhatsApp</button><button class="btn sec" id="doc-print">Print / PDF</button><button class="btn sec" id="doc-close">Close</button></div>
 
 <script>
 /* in its own block so it can also report a syntax error in the main script */
@@ -2082,7 +2100,7 @@ function xAdvPrint(){
     <tfoot><tr><td></td><td>Total</td><td class="n">${aed(due.reduce((s, p) => s + p.given, 0))}</td><td class="n">${aed(due.reduce((s, p) => s + p.back, 0))}</td><td class="n">${aed(due.reduce((s, p) => s + p.due, 0))}</td><td></td></tr></tfoot></table>
     <div class="sig"><div>Prepared by</div><div>Checked by</div><div>Approved by (MD)</div></div>
     <p class="ft">Printed ${dmy(today())} from the Al Tarwi app · Al Tarwi Building Contracting · Trade License No. 53254 · Al Dahan, Ras Al Khaimah</p></div>`;
-  waitImages($('sheet')).then(() => print());
+  docOut('Staff advances to recover ' + m, 'a4pad');
 }
 /* ---------- own-pocket payments to reimburse ---------- */
 function xReimb(){
@@ -2214,7 +2232,7 @@ function xCostPrint(){
     </tbody><tfoot><tr><td colspan="4">Total expenses</td><td class="n">${aed(s.total)}</td></tr></tfoot></table>
     <div class="sig"><div>Prepared by</div><div>Checked by</div><div>Approved by (MD)</div></div>
     <p class="ft">Printed ${dmy(today())} from the Al Tarwi app · Al Tarwi Building Contracting · Trade License No. 53254 · Al Dahan, Ras Al Khaimah</p></div>`;
-  waitImages($('sheet')).then(() => print());
+  docOut((isOv ? 'Overhead' : 'Site') + ' cost sheet ' + site, 'a4pad');
 }
 /* ---------- vehicle costs ---------- */
 function xVeh(){
@@ -2585,7 +2603,7 @@ function xSumPrint(){
     .ds pre{font:9.5pt/1.5 Consolas,monospace;white-space:pre-wrap;margin:0}.ds .ft{margin-top:10px;font-size:8pt;color:#5d6a7e}</style>
     <div class="ds">${prHead('DAILY SUMMARY', dmy(s.date))}<pre>${esc(s.text.split('\n').slice(2).join('\n'))}</pre>
     <p class="ft">Printed ${dmy(today())} from the Al Tarwi app · Al Tarwi Building Contracting · Trade License No. 53254 · Al Dahan, Ras Al Khaimah</p></div>`;
-  waitImages($('sheet')).then(() => print());
+  docOut('Daily summary ' + dmy(s.date), 'a4pad');
 }
 
 /* =================== letterhead documents · site details · bank · cheques · certificates & tax invoices =================== */
@@ -2727,7 +2745,7 @@ async function lhPrint(title, meta, body, opt = {}){
       <table class="lh-meta">${meta.filter(m => m[1] !== '' && m[1] != null).map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}</table></div>`}
       ${body}</div>
     ${lhModernFoot()}</div>`;
-  waitImages($('sheet')).then(() => print());
+  docOut(title + ' ' + ((meta[0] && meta[0][1]) || ''), opt.a5 ? 'a5' : 'a4');
 }
 /* logo mark cut from the letterhead (for the compact A5 voucher header) – made once, then kept */
 let LH_LOGO_ = '';
@@ -2740,6 +2758,63 @@ async function lhLogo(){
   return LH_LOGO_;
 }
 window.addEventListener('load', () => { lhLogo(); });          // ready before anyone prints
+/* ---------- Expenses documents: preview on screen → Share on WhatsApp (PDF) / Print / Close ---------- */
+const DOC = { name: '', kind: 'a4', pdf: null };
+const loadJs = src => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Could not load the PDF maker – check the internet connection.')); document.head.appendChild(s); });
+let PDF_LIBS = null;
+const pdfLibs = () => PDF_LIBS || (PDF_LIBS = Promise.all([
+  window.html2canvas ? 1 : loadJs('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'),
+  window.jspdf ? 1 : loadJs('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js')]).catch(e => { PDF_LIBS = null; throw e; }));
+function docFit(){ const p = $('sheet').querySelector('.doc-page'); if (p) p.style.zoom = Math.min(1, (innerWidth - 16) / 794).toFixed(3); }
+addEventListener('resize', () => { if (document.body.classList.contains('docview')) docFit(); });
+/* show the document now in #sheet on screen; kind: 'a5' (A5 landscape voucher), 'a4' (letterhead A4), 'a4pad' (plain A4 sheet) */
+async function docOut(name, kind){
+  const sh = $('sheet'); await waitImages(sh);
+  const page = document.createElement('div'); page.className = 'doc-page' + (kind === 'a5' ? ' doc-a5' : '');
+  const inner = document.createElement('div'); inner.className = 'doc-inner' + (kind === 'a4pad' ? ' doc-pad' : ''); page.appendChild(inner);
+  [...sh.childNodes].filter(n => n.nodeName !== 'STYLE' && n !== page).forEach(n => inner.appendChild(n)); sh.appendChild(page);
+  Object.assign(DOC, { name: String(name || 'Document').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim(), kind, pdf: null });
+  document.body.classList.add('docview'); $('docbar').hidden = false; $('doc-wa').disabled = false; $('doc-wa').textContent = 'Share on WhatsApp';
+  docFit(); sh.scrollTop = 0;
+  DOC.pdf = docMakePdf().catch(e => { DOC.pdf = null; throw e; });     // make the PDF in the background so Share is instant
+  DOC.pdf.catch(() => {});
+}
+async function docMakePdf(){
+  await pdfLibs(); await new Promise(r => setTimeout(r, 60));
+  const page = $('sheet').querySelector('.doc-page'), target = page.querySelector('.lh') || page.querySelector('.doc-inner') || page;
+  const canvas = await html2canvas(target, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false, windowWidth: 1100,
+    onclone: d => { d.body.classList.add('docshot'); const p = d.querySelector('#sheet .doc-page'); if (p) p.style.zoom = 1; } });
+  const a5 = DOC.kind === 'a5', W = 210, H = a5 ? 148 : 297, pxmm = canvas.width / W, pageH = Math.round(H * pxmm);
+  const pdf = new window.jspdf.jsPDF({ orientation: a5 ? 'landscape' : 'portrait', unit: 'mm', format: a5 ? 'a5' : 'a4', compress: true });
+  for (let y = 0, i = 0; y < canvas.height - 3 * pxmm; y += pageH, i++) {
+    const h = Math.min(pageH, canvas.height - y), c = document.createElement('canvas'); c.width = canvas.width; c.height = h;
+    const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, h); g.drawImage(canvas, 0, y, canvas.width, h, 0, 0, canvas.width, h);
+    if (i) pdf.addPage(); pdf.addImage(c.toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, W, h / pxmm);
+  }
+  const fname = DOC.name.replace(/[\\/:*?"<>|]+/g, '-').slice(0, 80) + '.pdf';
+  return new File([pdf.output('blob')], fname, { type: 'application/pdf' });
+}
+async function docShare(){
+  const b = $('doc-wa'); b.disabled = true; b.textContent = 'Preparing PDF…';
+  try {
+    const file = await (DOC.pdf || (DOC.pdf = docMakePdf()));
+    b.textContent = 'Share on WhatsApp'; b.disabled = false;
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: DOC.name, text: DOC.name }); }
+      catch (e) { if (e && e.name === 'NotAllowedError') toast('PDF ready – tap Share on WhatsApp again'); }
+      return;
+    }
+    // no file sharing here (computer / Google link): save the PDF, then open WhatsApp to attach it
+    const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = file.name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    toast('PDF saved – attach it in WhatsApp');
+    window.open('https:/' + '/wa.me/?text=' + encodeURIComponent(DOC.name + ' (PDF attached)'), '_blank', 'noopener');
+  } catch (e) { b.textContent = 'Share on WhatsApp'; b.disabled = false; toast(errText(e)); }
+}
+function docClose(){ document.body.classList.remove('docview'); $('docbar').hidden = true; $('sheet').innerHTML = ''; DOC.pdf = null; }
+$('doc-wa').onclick = docShare;
+$('doc-print').onclick = () => print();
+$('doc-close').onclick = docClose;
 /* the same modern header for every other printout (Daily Site Report, registers, attendance, advances, cost sheet, summary) */
 function prHead(title, sub){
   return `<div class="prh"><div class="prh-top"></div><div class="prh-row">
