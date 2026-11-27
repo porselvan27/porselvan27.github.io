@@ -2285,7 +2285,7 @@ function xList(){
   const d = X.d, F = X.filt;
   const months = [...new Set(d.txns.map(t => t.date.slice(0, 7)))].sort().reverse();
   let rows = d.txns.filter(t => (!F.month || t.date.slice(0, 7) === F.month) && (!F.site || t.alloc === F.site) && (!F.cat || t.cat === F.cat)
-    && (!F.status || t.status === F.status) && (!F.q || JSON.stringify(t).toLowerCase().includes(F.q.toLowerCase())));
+    && (!F.status || t.status === F.status) && (!F.party || xKey(t.party) === xKey(F.party)) && (!F.q || JSON.stringify(t).toLowerCase().includes(F.q.toLowerCase())));
   // cancelled entries are hidden unless asked for (status filter "Cancelled" or the "Show cancelled" link)
   const nCx = F.status ? 0 : rows.filter(t => t.status === 'Cancelled').length;
   if (nCx && !X.showCx) rows = rows.filter(t => t.status !== 'Cancelled');
@@ -2300,7 +2300,8 @@ function xList(){
       <select data-xf="month">${opt('', 'All months', F.month)}${months.map(m => opt(m, new Date(m + '-01T00:00').toLocaleString('en-GB', { month: 'long', year: 'numeric' }), F.month)).join('')}</select>
       <select data-xf="site">${opt('', 'All sites / overheads', F.site)}${allocs.map(a => opt(a, a, F.site)).join('')}</select>
       <select data-xf="cat">${opt('', 'All categories', F.cat)}${d.cats.map(c => opt(c.name, c.name, F.cat)).join('')}</select>
-      <select data-xf="status">${opt('', 'All status', F.status)}${['Approved', 'Pending MD', 'Rejected', 'Cancelled', 'Waiting confirmation', 'Confirmed'].map(s => opt(s, s, F.status)).join('')}</select></div>
+      <select data-xf="status">${opt('', 'All status', F.status)}${['Approved', 'Pending MD', 'Rejected', 'Cancelled', 'Waiting confirmation', 'Confirmed'].map(s => opt(s, s, F.status)).join('')}</select>
+      <select data-xf="party" style="grid-column:1/-1">${opt('', 'All suppliers / subcontractors', F.party || '')}${xSuppliers().sort((a, b) => a.name.localeCompare(b.name)).map(s => opt(s.name, s.name + (s.type ? ' (' + s.type + ')' : ''), F.party || '')).join('')}</select></div>
     <input data-xf="q" value="${esc(F.q)}" placeholder="Search item, party, voucher, staff…" aria-label="Search entries" style="margin-bottom:10px">
     <div class="x-tot"><span>${rows.length} entries</span><span style="color:var(--danger)">Out ${aed(out)}</span><span style="color:var(--ok)">In ${aed(inn)}</span></div>
     ${list || '<div class="empty">No entries match.</div>'}
@@ -2414,7 +2415,8 @@ function xForm(){
         <optgroup label="Overheads">${s.overheads.map(o => opt(o, o, f.alloc)).join('')}</optgroup></select></div>
       <div><label for="xf-cat">Category</label><select id="xf-cat" data-xi="cat">${opt('', 'Choose…', f.cat)}${d.cats.map(c => opt(c.name, c.name, f.cat)).join('')}</select></div></div>
     <div><label for="xf-item">Item</label><input id="xf-item" data-xi="item" list="x-items" value="${esc(f.item || '')}" placeholder="e.g. Cement, JCB hire, Compaction test"></div>
-    <div><label for="xf-party">${bl ? 'Supplier / subcontractor' : 'Paid to'}</label><input id="xf-party" data-xi="party" list="x-parties" value="${esc(f.party || '')}" placeholder="${bl ? 'Who sent the bill' : 'Supplier, subcontractor or person'}"></div>
+    <div><label for="xf-pick">${bl ? 'Supplier / subcontractor' : 'Paid to'}</label>${xPartyPick(f.party)}
+      <input id="xf-party" data-xi="party" list="x-parties" value="${esc(f.party || '')}" placeholder="${bl ? 'or type a new name' : 'or type a name (new supplier or a person)'}" style="margin-top:6px"></div>
     ${oweHint}
     ${bl ? `<p class="hint">No money moves now. The bill goes on <b>${esc(f.party || 'their')}</b> statement as money we owe, and counts in the site cost. Pay it later with <b>I paid for something</b> → tick <b>Pays a bill already entered</b>.</p>` : `
     ${f.party ? `<label class="x-tog"><input type="checkbox" data-xi="onAcct" ${f.onAcct ? 'checked' : ''}> Pays a bill already entered (supplier account) – not a new cost</label>` : ''}
@@ -3658,6 +3660,14 @@ function xLedger(name){
   Object.keys(age).forEach(x => { age[x] = xr2(age[x]); });
   return { name: p.name || name, p, opening, rows, billed, paid, bal, age, last: rows.length ? rows[rows.length - 1].date : '' };
 }
+/* drop-down of suppliers / subcontractors (grouped by type) – easier on a phone than the typed suggestions */
+function xPartyPick(cur){
+  const list = xSuppliers().sort((a, b) => a.name.localeCompare(b.name)), groups = {};
+  list.forEach(s => { const g = s.type === 'Subcontractor' ? 'Subcontractors' : s.type === 'Supplier' || !s.type ? 'Suppliers' : 'Others'; (groups[g] = groups[g] || []).push(s); });
+  const o = s => `<option value="${esc(s.name)}"${xKey(s.name) === xKey(cur) ? ' selected' : ''}>${esc(s.name)}${s.bal > 0.5 ? ' – owe ' + aed(s.bal) : ''}</option>`;
+  return `<select id="xf-pick" data-xpick>${'<option value="">' + (list.length ? 'Choose from the list…' : 'No suppliers yet – type the name below') + '</option>'}
+    ${['Subcontractors', 'Suppliers', 'Others'].filter(g => groups[g]).map(g => `<optgroup label="${g}">${groups[g].map(o).join('')}</optgroup>`).join('')}</select>`;
+}
 /* staff (salary, advances) are company labour, not suppliers */
 const xStaffCat = c => /salary|advance|staff/i.test(String(c || ''));
 function xSuppliers(){
@@ -4192,6 +4202,9 @@ $('exp').addEventListener('input', e => {
 /* auto link: picking a known supplier fills its usual category, site and TRN */
 $('exp').addEventListener('change', e => {
   const t = e.target;
+  if ('xpick' in t.dataset && X.f && X.view === 'form') {            // picked from the supplier / subcontractor list
+    X.f.party = t.value; if (xSupplierFill(X.f)) toast('Filled from the last bill of ' + X.f.party);
+    if (!X.f.party) X.f.onAcct = false; xForm(); return; }
   if (t.dataset.xi === 'party' && X.f && X.view === 'form') {        // refresh: "we owe …" line and the "pays a bill" tick box
     if (xSupplierFill(X.f)) toast('Filled from the last bill of ' + X.f.party);
     if (!X.f.party) X.f.onAcct = false; xForm(); }
