@@ -2883,7 +2883,7 @@ async function docOut(name, kind){
 }
 async function docMakePdf(){
   await pdfLibs(); await new Promise(r => setTimeout(r, 60));
-  const page = $('sheet').querySelector('.doc-page'), target = page.querySelector('.lh') || page.querySelector('.wp') || page.querySelector('.ps') || page.querySelector('.doc-inner') || page;
+  const page = $('sheet').querySelector('.doc-page'), target = page.querySelector('.lh') || page.querySelector('.wp') || page.querySelector('.ps') || page.querySelector('.tk') || page.querySelector('.doc-inner') || page;
   const land = DOC.kind === 'a4l';
   const canvas = await html2canvas(target, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false, windowWidth: land ? 1500 : 1100,
     onclone: d => { d.body.classList.add('docshot'); const p = d.querySelector('#sheet .doc-page'); if (p) p.style.zoom = 1; } });
@@ -3009,8 +3009,13 @@ function xSchRefit(old, start, months){
   const n = xSchFromTemplate(start, months, X.sf && X.sf.code ? String(X.sf.code).toUpperCase() : ''); if (!old) return n;
   const byId = {}; old.items.forEach(it => { byId[it.id] = it; });
   n.items = n.items.filter(it => byId[it.id]).map(it => Object.assign(it, { name: byId[it.id].name, w: byId[it.id].w, pct: byId[it.id].pct, ph: byId[it.id].ph || it.ph, boq: byId[it.id].boq != null ? byId[it.id].boq : it.boq }));
-  const own = old.items.filter(it => !XWP_ID.test(it.id));   // activities you added yourself stay where they are
-  n.items = n.items.concat(own).sort((p, q) => p.start.localeCompare(q.start)); n.hist = old.hist || [];
+  // activities not from the standard list (added by hand, or a submitted programme): move with the start date, and stretch if the months change
+  const oT = xMonthsDays(old.start, old.months), nT = xMonthsDays(start, months), f = oT && nT ? nT / oT : 1;
+  const own = old.items.filter(it => !XWP_ID.test(it.id)).map(it => { const off = xDaysBetween(old.start, it.start), b = Math.round(off * f), e = Math.round((off + (+it.dur || 1)) * f);
+    return Object.assign({}, it, { start: xAddDays(start, b) || start, dur: Math.max(1, e - b) }); });
+  const keepOrder = !old.items.some(it => XWP_ID.test(it.id));          // a submitted programme keeps its own numbering
+  n.items = keepOrder ? own : n.items.concat(own).sort((p, q) => p.start.localeCompare(q.start));
+  Object.assign(n, { hist: old.hist || [], ref: old.ref || '', notes: old.notes || '' });
   return n;
 }
 function xSitePHint(){
@@ -3757,38 +3762,50 @@ const XPS_STAGES = [['Preliminary works, Excavation and Back filling', 4], ['Sub
   ['Plumbing works and Sanitary ware', 7], ['Boundary wall, External works and Gates', 7], ['Air Conditions work (By Owner)', 0]];
 const xPs = code => ((X.d && X.d.paysch) || {})[code] || null;
 const xPsContract = code => { const s = xSite(code) || {}; return xr2(s.contract) + xr2(s.variations); };
+/* settings beyond AT021's: baseValue (stage % of another value, e.g. villa only) · stage amt (fixed amount instead of %) · pgPct (performance guarantee
+   % of base, taken from the first payment) · partial (stages cover only part of the contract) · statedTotal (total written on the schedule) · extras (not yet scheduled) */
+const xPsAmt = s => s.amt !== '' && s.amt != null && String(s.amt).trim() !== '' && isFinite(+String(s.amt).replace(/,/g, '')) ? +String(s.amt).replace(/,/g, '') : null;
 function xPayCalc(ps, contract){
-  const C = +contract || 0, n = k => +ps[k] || 0, E = 0.005;
+  const C = +contract || 0, n = k => +ps[k] || 0, E = 0.005, base = n('baseValue') > 0 ? n('baseValue') : C;
   const retCap = n('advance'), consCap = Math.max(0, C * n('consFeePct') / 100 - n('advToCons'));
-  let retSum = 0, consSum = 0, retDoneAt = '', consDoneAt = '';
+  let retSum = 0, consSum = 0, retDoneAt = '', consDoneAt = '', pgLeft = base * n('pgPct') / 100;
   const rows = (ps.stages || []).map((s, i) => {
-    const gross = C * (+s.pct || 0) / 100, vat = gross * n('vatPct') / 100, maint = gross * n('maintPct') / 100, bal = gross - maint;
+    const fixed = xPsAmt(s), gross = fixed != null ? fixed : base * (+s.pct || 0) / 100, vat = gross * n('vatPct') / 100, maint = gross * n('maintPct') / 100, bal = gross - maint;
     const ret = retCap > 0 ? Math.min(bal * n('ownerRetPct') / 100, Math.max(0, retCap - retSum)) : 0; retSum += ret;
     const cons = consCap > 0 ? Math.min(bal * n('consPct') / 100, Math.max(0, consCap - consSum)) : 0; consSum += cons;
+    const pg = gross > 0 && pgLeft > 0 ? Math.min(pgLeft, bal - ret - cons) : 0; pgLeft -= pg;      // performance guarantee from the first payment
     const retDone = retCap > 0 && retSum >= retCap - E, consDone = consCap > 0 && consSum >= consCap - E;
     const retEnd = ret > E && retDone && !retDoneAt, consEnd = cons > E && consDone && !consDoneAt;
     if (retEnd) retDoneAt = s.name; if (consEnd) consDoneAt = s.name;
-    const label = !gross ? 'Not in contract' : retCap <= 0 ? 'Progress payment' : (ret > E && !retDone ? 'Recovering Advance' : 'Advance Fully Recovered') + (consEnd ? ' / Consultant Balance Complete' : '');
-    return { i, name: s.name, pct: +s.pct || 0, gross, vat, maint, bal, ret, cons, net: bal - ret - cons, netVat: bal - ret - cons + vat, label, status: s.status || '', date: s.date || '', ref: s.ref || '' };
+    const label = s.note ? s.note : !gross ? 'Not in contract' : retCap <= 0 ? (pg > E ? 'Performance guarantee ' + aed(pg) + ' held' : 'Progress payment') : (ret > E && !retDone ? 'Recovering Advance' : 'Advance Fully Recovered') + (consEnd ? ' / Consultant Balance Complete' : '');
+    return { i, name: s.name, pct: fixed != null ? (+s.pct || (base ? gross / base * 100 : 0)) : +s.pct || 0, fixed: fixed != null, gross, vat, maint, bal, ret, cons, pg,
+      net: bal - ret - cons - pg, netVat: bal - ret - cons - pg + vat, label, status: s.status || '', date: s.date || '', ref: s.ref || '', note: s.note || '' };
   });
-  const T = k => rows.reduce((a, r) => a + r[k], 0), tot = { pct: T('pct'), gross: T('gross'), vat: T('vat'), maint: T('maint'), bal: T('bal'), ret: T('ret'), cons: T('cons'), net: T('net'), netVat: T('netVat') };
-  const near = (a, b) => Math.abs(a - b) < 0.005;
-  const checks = [['Stage % total = 100%', near(tot.pct, 100), xr2(tot.pct) + '%'], ['Gross total = contract', near(tot.gross, C), aed(tot.gross)],
-    ['VAT total = ' + n('vatPct') + '% of contract', near(tot.vat, C * n('vatPct') / 100), aed(tot.vat)], ['Maintenance total = ' + n('maintPct') + '% of contract', near(tot.maint, C * n('maintPct') / 100), aed(tot.maint)]];
+  const T = k => rows.reduce((a, r) => a + r[k], 0), tot = { pct: T('pct'), gross: T('gross'), vat: T('vat'), maint: T('maint'), bal: T('bal'), ret: T('ret'), cons: T('cons'), pg: T('pg'), net: T('net'), netVat: T('netVat') };
+  const near = (a, b) => Math.abs(a - b) < 0.005, partial = !!ps.partial, effPct = base ? tot.gross / base * 100 : 0;
+  const checks = partial ? [] : [['Stage % total = 100%', near(effPct, 100), xr2(effPct) + '%'], ['Gross total = ' + (n('baseValue') > 0 ? 'base value ' + aed(base) : 'contract'), near(tot.gross, base), aed(tot.gross)]];
+  if (partial && n('statedTotal')) checks.push(['Stages total = total stated on the schedule ' + aed(n('statedTotal')), near(tot.gross, n('statedTotal')), aed(tot.gross) + (near(tot.gross, n('statedTotal')) ? '' : ' · difference ' + aed(n('statedTotal') - tot.gross))]);
+  checks.push(['VAT total = ' + n('vatPct') + '% of the stages', near(tot.vat, tot.gross * n('vatPct') / 100), aed(tot.vat)], ['Maintenance total = ' + n('maintPct') + '% of the stages', near(tot.maint, tot.gross * n('maintPct') / 100), aed(tot.maint)]);
   if (retCap > 0) checks.push(['Owner return total = advance ' + aed(retCap), near(tot.ret, retCap), aed(tot.ret) + (retDoneAt ? ' · ends at ' + retDoneAt : '')]);
   if (consCap > 0) checks.push(['Consultant recovery total = ' + aed(consCap), near(tot.cons, consCap), aed(tot.cons) + (consDoneAt ? ' · ends at ' + consDoneAt : '')]);
-  const advNet = Math.max(0, n('advance') - n('advToCons')), paid = rows.filter(r => r.status === 'Paid'), applied = rows.filter(r => r.status === 'Applied');
-  return { C, rows, tot, checks, retCap, consCap, retDoneAt, consDoneAt, advNet,
+  if (n('pgPct') > 0) checks.push(['Performance guarantee = ' + n('pgPct') + '% of ' + aed(base), near(tot.pg, base * n('pgPct') / 100), aed(tot.pg)]);
+  const advNet = Math.max(0, n('advance') - n('advToCons')), paid = rows.filter(r => r.status === 'Paid'), applied = rows.filter(r => r.status === 'Applied'), chq = rows.filter(r => r.status === 'Cheque');
+  // value side (excl. VAT): what has been paid against the contract, and what is left
+  const valuePaid = paid.reduce((a, r) => a + r.gross, 0), chequeVal = chq.reduce((a, r) => a + r.gross, 0), unpaid = rows.filter(r => !/Paid|Cheque/.test(r.status)).reduce((a, r) => a + r.gross, 0);
+  const extras = (ps.extras || []).filter(x => x.name), extrasIn = extras.filter(x => x.inContract).reduce((a, x) => a + (+x.amount || 0), 0);
+  const balance = C - valuePaid - chequeVal, diff = C - tot.gross - extrasIn;
+  if (partial) checks.push(['Received + balance = contract ' + aed(C), near(valuePaid + chequeVal + balance, C), aed(valuePaid + chequeVal) + ' + ' + aed(balance)]);
+  return { C, base, rows, tot, checks, retCap, consCap, retDoneAt, consDoneAt, advNet, partial, extras, extrasIn, valuePaid, chequeVal, unpaid, balance, diff,
     consTotal: n('advToCons') + tot.cons, netConstruction: tot.netVat + advNet,
-    received: (ps.advStatus === 'Paid' ? advNet : 0) + paid.reduce((a, r) => a + r.netVat, 0), appliedAmt: applied.reduce((a, r) => a + r.netVat, 0) };
+    received: (ps.advStatus === 'Paid' ? advNet : 0) + paid.reduce((a, r) => a + r.netVat, 0), appliedAmt: applied.reduce((a, r) => a + r.netVat, 0) + chq.reduce((a, r) => a + r.netVat, 0) };
 }
 /* consultant rate that ends the recovery exactly at a chosen stage: balance to cap ÷ balances up to that stage */
 function xPsConsRate(ps, contract, upto){
-  const C = +contract || 0, cap = Math.max(0, C * (+ps.consFeePct || 0) / 100 - (+ps.advToCons || 0));
-  const bal = (ps.stages || []).slice(0, upto + 1).reduce((a, s) => a + C * (+s.pct || 0) / 100 * (1 - (+ps.maintPct || 0) / 100), 0);
+  const C = +contract || 0, cap = Math.max(0, C * (+ps.consFeePct || 0) / 100 - (+ps.advToCons || 0)), base = +ps.baseValue > 0 ? +ps.baseValue : C;
+  const bal = (ps.stages || []).slice(0, upto + 1).reduce((a, s) => a + (xPsAmt(s) != null ? xPsAmt(s) : base * (+s.pct || 0) / 100) * (1 - (+ps.maintPct || 0) / 100), 0);
   return bal ? cap / bal * 100 : 0;
 }
-const xPsBadge = st => `<span class="x-st ${st === 'Paid' ? 'Approved' : st === 'Applied' ? 'Confirmed' : 'Pending'}">${st === 'Applied' ? 'Applied to bank' : st || 'Planned'}</span>`;
+const xPsBadge = st => `<span class="x-st ${st === 'Paid' ? 'Approved' : st === 'Applied' || st === 'Cheque' ? 'Confirmed' : 'Pending'}">${st === 'Applied' ? 'Applied to bank' : st === 'Cheque' ? 'Cheque received – not cleared' : st || 'Planned'}</span>`;
 function xPaySch(code){
   X.view = 'paysch'; X.siteCode = code;
   const ps = xPs(code), si = xSite(code) || {};
@@ -3799,16 +3816,20 @@ function xPaySch(code){
   const c = xPayCalc(ps, xPsContract(code)), ok = c.checks.every(k => k[1]);
   xMain().innerHTML = `<div class="x-bal"><small>STAGE PAYMENT SCHEDULE · ${esc(code)}${ps.funding ? ' · ' + esc(ps.funding) : ''}</small><b>AED ${aed(c.C)}<span> excl. VAT</span></b>
       <div class="x-row"><div><i>Received</i>${aed(c.received)}</div><div><i>Applied, waiting</i>${aed(c.appliedAmt)}</div><div><i>Net in construction</i>${aed(c.netConstruction)}</div></div>${xBar(c.received, c.netConstruction || 1)}</div>
-    <div class="x-stats" style="margin-top:10px"><div><b>${aed(c.tot.maint)}</b><small>Maintenance held</small></div><div><b>${aed(c.tot.ret)}</b><small>Returned to owner</small></div><div><b>${aed(c.consTotal)}</b><small>Consultant</small></div></div>
+    <div class="x-stats" style="margin-top:10px"><div><b>${aed(c.valuePaid)}</b><small>Paid value (excl. VAT)</small></div><div><b>${aed(c.chequeVal)}</b><small>Cheques not cleared</small></div><div><b class="${c.balance > 0 ? 'neg' : ''}">${aed(c.balance)}</b><small>Contract balance</small></div></div>
+    ${c.partial || c.extras.length ? `<p class="hint" style="margin:6px 0 0">Balance ${aed(c.balance)} = remaining stages ${aed(c.unpaid)}${c.extrasIn ? ' + ' + c.extras.filter(x => x.inContract).map(x => esc(x.name) + ' ' + aed(x.amount)).join(' + ') : ''}${Math.abs(c.diff) > 0.005 ? ' + schedule difference ' + aed(c.diff) : ''}.</p>` : ''}
+    <div class="x-stats" style="margin-top:10px"><div><b>${aed(c.tot.maint)}</b><small>Maintenance held</small></div>${c.tot.ret > 0.005 ? `<div><b>${aed(c.tot.ret)}</b><small>Returned to owner</small></div>` : ''}${c.consTotal > 0.005 ? `<div><b>${aed(c.consTotal)}</b><small>Consultant</small></div>` : ''}${c.tot.pg > 0.005 ? `<div><b>${aed(c.tot.pg)}</b><small>Perf. guarantee</small></div>` : ''}<div><b>${aed(c.tot.vat)}</b><small>VAT</small></div></div>
     <div class="card" style="margin-top:10px"><div class="body" style="padding:10px 14px">${xPsChkHtml(c)}</div></div>
+    ${ps.notes ? `<p class="hint">${esc(ps.notes)}</p>` : ''}
     ${ok ? '' : '<p class="x-warn">A check does not match – open Edit and correct the % or rates.</p>'}
     <div class="x-sec">Stages <span class="hint" style="font-weight:500">tap a stage to mark it applied / paid</span></div>
     <div class="x-list">
       ${+ps.advance ? `<button class="x-it" data-xpstg="adv"><span class="ic in">0</span><span class="t"><b>Owner advance${+ps.advToCons ? ` (AED ${aed(ps.advToCons)} to consultant)` : ''}</b><small>Net to contractor ${aed(c.advNet)}${ps.advDate ? ' · ' + dmy(ps.advDate) : ''}</small><br>${xPsBadge(ps.advStatus)}</span><span class="a">${aed(ps.advance)}</span></button>` : ''}
       ${c.rows.map(r => `<button class="x-it" data-xpstg="${r.i}"><span class="ic ${r.status === 'Paid' ? 'in' : r.status === 'Applied' ? 'tr' : ''}">${r.i + 1}</span>
-        <span class="t"><b>${esc(r.name)} · ${xr2(r.pct)}%</b><small>Gross ${aed(r.gross)} · net ${aed(r.net)} + VAT ${aed(r.vat)}${r.ret > 0.005 ? ' · owner return ' + aed(r.ret) : ''}${r.cons > 0.005 ? ' · consultant ' + aed(r.cons) : ''}</small>
+        <span class="t"><b>${esc(r.name)} · ${xr2(r.pct)}%${r.fixed ? ' (fixed amount)' : ''}</b><small>Gross ${aed(r.gross)} · net ${aed(r.net)} + VAT ${aed(r.vat)}${r.ret > 0.005 ? ' · owner return ' + aed(r.ret) : ''}${r.cons > 0.005 ? ' · consultant ' + aed(r.cons) : ''}${r.pg > 0.005 ? ' · perf. guarantee ' + aed(r.pg) : ''}</small>
         <small>${esc(r.label)}${r.ref ? ' · ' + esc(r.ref) : ''}${r.date ? ' · ' + dmy(r.date) : ''}</small>${xPsBadge(r.status)}</span><span class="a">${aed(r.netVat)}</span></button>`).join('')}</div>
-    <p class="hint">Amounts on the right = net payable to the contractor incl. VAT (as on the signed schedule). Totals: gross ${aed(c.tot.gross)} · VAT ${aed(c.tot.vat)} · net incl. VAT ${aed(c.tot.netVat)}.</p>
+    <p class="hint">Amounts on the right = net payable to the contractor incl. VAT. Totals: gross ${aed(c.tot.gross)} · VAT ${aed(c.tot.vat)} · net incl. VAT ${aed(c.tot.netVat)}.</p>
+    ${c.extras.length ? `<div class="x-sec">Not yet scheduled</div><div class="x-list">${c.extras.map(x => `<div class="x-it" style="cursor:default"><span class="ic ${x.inContract ? 'tr' : ''}">${x.inContract ? 'IN' : 'EX'}</span><span class="t"><b>${esc(x.name)}</b><small>${esc(x.status || '')}${x.note ? ' · ' + esc(x.note) : ''}</small><small>${x.inContract ? 'Part of the contract balance' : 'Not added to the contract balance'}</small></span><span class="a">${aed(x.amount)}</span></div>`).join('')}</div>` : ''}
     <div class="x-save"><div><button class="btn sec" data-xback="site">Back</button>${xIsAdmin() ? `<button class="btn sec" data-xpsedit="${esc(code)}">Edit</button>` : ''}<button class="btn" data-xpsprint="${esc(code)}">Print / WhatsApp</button></div></div>`;
 }
 /* edit: settings + stages */
@@ -3822,16 +3843,26 @@ function xPaySchForm(code){
       <div class="x-two">${f('advance', 'Owner advance (AED)', '0')}${f('advToCons', 'Of which paid to consultant (AED)', '0')}</div>
       <div class="x-two">${f('ownerRetPct', 'Owner return % (of balance)')}${f('consFeePct', 'Consultant fee % (of contract)')}</div>
       <div>${f('consPct', 'Consultant recovery % (of balance)', 'e.g. 7.411919991877')}</div>
+      <div class="x-two">${f('baseValue', 'Stage % is of (AED) – blank = contract', 'e.g. villa value 1,435,000')}${f('pgPct', 'Performance guarantee % (from first payment)', '0')}</div>
+      <label style="display:flex;gap:8px;align-items:flex-start;font-weight:500"><input type="checkbox" data-xpfpart ${ps.partial ? 'checked' : ''} style="width:auto;margin-top:3px"> <span>These stages cover only part of the contract (e.g. owner-funded stages only)</span></label>
+      <div class="x-two">${f('statedTotal', 'Total written on the schedule (AED)', 'to show any difference')}<div></div></div>
+      ${f('notes', 'Notes (shown on the schedule)', 'e.g. TBC: is the 5% maintenance separate from the VAT held?', '')}
       <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap"><div style="flex:1;min-width:180px"><label for="xpf-upto">Work out the recovery % so it ends at</label>
         <select id="xpf-upto">${ps.stages.map((s, i) => `<option value="${i}">${i + 1}. ${esc(s.name)}</option>`).join('')}</select></div><button type="button" class="btn sec" data-xpfrate>Work it out</button></div>
     </div></div>
-    <div class="card"><h2>STAGES</h2><div class="body" id="xpf-st">${xPsStageRows(ps)}</div></div>
+    <div class="card"><h2>STAGES</h2><div class="body"><div class="x-lnh" style="grid-template-columns:1fr 62px 92px 34px"><span>Stage</span><span>%</span><span>Fixed AED</span><span></span></div><div id="xpf-st" style="display:grid;gap:6px">${xPsStageRows(ps)}</div>
+      <p class="hint" style="margin:6px 0 0">Fixed AED (optional) = the amount written on the schedule when it differs from % × value.</p></div></div>
+    <div class="card"><h2>NOT YET SCHEDULED</h2><div class="body"><div id="xpf-ex" style="display:grid;gap:6px">${xPsExtraRows(ps)}</div></div></div>
     <div class="card"><h2>CHECKS</h2><div class="body" id="xpf-chk"></div></div><p class="x-ferr" id="xpf-err"></p></div>
     <div class="x-save"><div><button class="btn sec" data-xback="paysch">Cancel</button><button class="btn ok" id="xpf-save">Save</button></div></div>`;
   xPsChecks(); $('exp').scrollTop = 0;
 }
-const xPsStageRows = ps => ps.stages.map((s, i) => `<div class="x-ln" style="grid-template-columns:1fr 70px 34px"><input data-xps="${i}|name" value="${esc(s.name)}" aria-label="Stage ${i + 1}"><input data-xps="${i}|pct" value="${esc(s.pct)}" inputmode="decimal" aria-label="% of contract"><button type="button" data-xpsdel="${i}" aria-label="Remove stage">×</button></div>`).join('')
+const xPsStageRows = ps => ps.stages.map((s, i) => `<div class="x-ln" style="grid-template-columns:1fr 62px 92px 34px"><input data-xps="${i}|name" value="${esc(s.name)}" aria-label="Stage ${i + 1}"><input data-xps="${i}|pct" value="${esc(s.pct)}" inputmode="decimal" aria-label="% of contract"><input data-xps="${i}|amt" value="${esc(s.amt == null ? '' : s.amt)}" inputmode="decimal" placeholder="—" aria-label="Fixed amount"><button type="button" data-xpsdel="${i}" aria-label="Remove stage">×</button></div>`).join('')
   + `<button type="button" class="btn sec" data-xpsadd style="justify-self:start;margin-top:6px">+ Stage</button>`;
+const xPsExtraRows = ps => (ps.extras || []).map((x, i) => `<div style="display:grid;gap:4px;padding:6px 0;border-bottom:1px solid var(--line)"><div class="x-ln" style="grid-template-columns:1fr 110px 34px"><input data-xpx="${i}|name" value="${esc(x.name || '')}" placeholder="e.g. Programme finance (SZHP/ADIB)" aria-label="Item"><input data-xpx="${i}|amount" value="${esc(x.amount == null ? '' : x.amount)}" inputmode="decimal" placeholder="AED" aria-label="Amount"><button type="button" data-xpxdel="${i}" aria-label="Remove">×</button></div>
+    <input data-xpx="${i}|status" value="${esc(x.status || '')}" placeholder="Status, e.g. Requested from consultant" aria-label="Status"><input data-xpx="${i}|note" value="${esc(x.note || '')}" placeholder="Note" aria-label="Note">
+    <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:0"><input type="checkbox" data-xpxin="${i}" ${x.inContract ? 'checked' : ''} style="width:auto"> Part of the contract value (counted in the balance)</label></div>`).join('')
+  + `<button type="button" class="btn sec" data-xpxadd style="justify-self:start;margin-top:6px">+ Item</button>`;
 function xPsChecks(){ const A = X.psf, el = $('xpf-chk'); if (!A || !el) return; const c = xPayCalc(A.ps, xPsContract(A.code));
   el.innerHTML = xPsChkHtml(c); }
 const xPsChkHtml = c => c.checks.map(([t, pass, v]) => { const [amt, end] = String(v).split(' · ');
@@ -3842,18 +3873,19 @@ const xPsTemplate = () => ({ funding: '', vatPct: 5, maintPct: 10, advance: 0, a
 /* one stage: breakdown + status */
 function xPayStage(code, i){
   const ps = xPs(code), c = xPayCalc(ps, xPsContract(code)), adv = i === 'adv', r = adv ? null : c.rows[+i];
-  X.pst = { code, i, status: adv ? ps.advStatus || '' : r.status, date: (adv ? ps.advDate : r.date) || today(), ref: adv ? '' : r.ref }; X.view = 'paystg';
+  X.pst = { code, i, status: adv ? ps.advStatus || '' : r.status, date: (adv ? ps.advDate : r.date) || today(), ref: adv ? '' : r.ref, note: adv ? '' : r.note }; X.view = 'paystg';
   const row = (k, v, cl) => `<div class="x-vrow ${cl || ''}"><span>${k}</span><b>${v}</b></div>`;
   xMain().innerHTML = `<div class="x-form"><div class="card"><h2>${adv ? 'OWNER ADVANCE' : 'STAGE ' + (r.i + 1) + ' · ' + xr2(r.pct) + '%'}</h2><div class="body">
       ${adv ? row('Owner advance', aed(ps.advance)) + row('Paid to consultant', '−' + aed(ps.advToCons), 'neg') + row('Net to contractor', 'AED ' + aed(c.advNet), 'grand')
-        : `<b>${esc(r.name)}</b>` + row('Gross (' + xr2(r.pct) + '% of ' + aed(c.C) + ')', aed(r.gross)) + row('Maintenance ' + xr2(ps.maintPct) + '% held', '−' + aed(r.maint), 'neg') + row('Balance', aed(r.bal))
-          + row('Owner return', '−' + aed(r.ret), 'neg') + row('Consultant recovery', '−' + aed(r.cons), 'neg') + row('Net excl. VAT', aed(r.net)) + row('VAT ' + xr2(ps.vatPct) + '% (on gross)', aed(r.vat)) + row('Net payable incl. VAT', 'AED ' + aed(r.netVat), 'grand')
+        : `<b>${esc(r.name)}</b>` + row(r.fixed ? 'Gross (fixed amount on the schedule)' : 'Gross (' + xr2(r.pct) + '% of ' + aed(c.base) + ')', aed(r.gross)) + row('Maintenance ' + xr2(ps.maintPct) + '% held', '−' + aed(r.maint), 'neg') + row('Balance', aed(r.bal))
+          + (r.ret > 0.005 ? row('Owner return', '−' + aed(r.ret), 'neg') : '') + (r.cons > 0.005 ? row('Consultant recovery', '−' + aed(r.cons), 'neg') : '') + (r.pg > 0.005 ? row('Performance guarantee', '−' + aed(r.pg), 'neg') : '') + row('Net excl. VAT', aed(r.net)) + row('VAT ' + xr2(ps.vatPct) + '% (on gross)', aed(r.vat)) + row('Net payable incl. VAT', 'AED ' + aed(r.netVat), 'grand')
           + `<p class="hint" style="margin:6px 0 0">${esc(r.label)}</p>`}
     </div></div>
     ${xIsAdmin() ? `<div class="card"><h2>STATUS</h2><div class="body">
-      <div><label for="xpt-status">Status</label><select id="xpt-status" data-xpt="status">${[['', 'Planned'], ['Applied', 'Applied to bank'], ['Paid', 'Paid / received']].map(([v, l]) => `<option value="${v}"${v === X.pst.status ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div><label for="xpt-status">Status</label><select id="xpt-status" data-xpt="status">${[['', 'Planned'], ['Applied', 'Applied / requested'], ['Cheque', 'Cheque received – not cleared'], ['Paid', 'Paid / received']].map(([v, l]) => `<option value="${v}"${v === X.pst.status ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
       <div class="x-two"><div><label for="xpt-date">Date</label><input type="date" id="xpt-date" data-xpt="date" value="${esc(X.pst.date)}"></div>
-        ${adv ? '<div></div>' : `<div><label for="xpt-ref">Bill / payment ref.</label><input id="xpt-ref" data-xpt="ref" value="${esc(X.pst.ref)}" placeholder="e.g. Payment 1"></div>`}</div></div></div>` : ''}
+        ${adv ? '<div></div>' : `<div><label for="xpt-ref">Bill / payment ref.</label><input id="xpt-ref" data-xpt="ref" value="${esc(X.pst.ref)}" placeholder="e.g. Payment 1"></div>`}</div>
+      ${adv ? '' : `<div><label for="xpt-note">Note (shown as the stage status)</label><input id="xpt-note" data-xpt="note" value="${esc(X.pst.note || '')}" placeholder="e.g. Only 13.81% actually paid"></div>`}</div></div>` : ''}
     <p class="x-ferr" id="xpt-err"></p></div>
     <div class="x-save"><div><button class="btn sec" data-xback="paysch">Back</button>${xIsAdmin() ? '<button class="btn ok" id="xpt-save">Save status</button>' : ''}</div></div>`;
   $('exp').scrollTop = 0;
@@ -3886,22 +3918,29 @@ async function xPsPrint(code){
     <div class="ps-g">
       <table class="ps-k"><caption>PROJECT &amp; CONTRACT INFORMATION</caption>${kv([['Owner (Client)', esc(si.client || '')], ['Contractor', 'Al Tarwi Building Contracting (License No. ' + esc((X.d.settings || {}).licence || '53254') + ')'], ['Consultant', esc(si.consultant || '')],
         ps.funding ? ['Funding Programme', esc(ps.funding)] : null, ['Plot No.', esc(si.plot || '')], ['Location', esc(si.location || '')], ['Contract Duration', sch && sch.months ? sch.months + ' months from ' + dmy(sch.start) : 'From Site Handover / Commencement Order']])}</table>
-      <table class="ps-k"><caption>PROJECT FINANCING (Total Excl. VAT – VAT Added Extra)</caption>${kv([['Total Contract Value (Excl. VAT)', 'AED ' + aed(c.C)], +ps.advance ? ['Owner Advance (fixed, paid first)', '<span style="color:#1a3fbf">AED ' + aed(ps.advance) + '</span>'] : null,
+      <table class="ps-k"><caption>PROJECT FINANCING (Total Excl. VAT – VAT Added Extra)</caption>${kv([['Total Contract Value (Excl. VAT)', 'AED ' + aed(c.C)], +ps.baseValue ? ['Stage % calculated on', 'AED ' + aed(ps.baseValue)] : null,
+        +ps.pgPct ? ['Performance Guarantee (from first payment)', '<span style="color:#1a3fbf">' + xr2(ps.pgPct) + '% = AED ' + aed(c.base * ps.pgPct / 100) + '</span>'] : null, +ps.advance ? ['Owner Advance (fixed, paid first)', '<span style="color:#1a3fbf">AED ' + aed(ps.advance) + '</span>'] : null,
         ['Maintenance / Retention % (held every payment)', '<span style="color:#1a3fbf">' + xr2(ps.maintPct) + '%</span>'], +ps.advance ? ['Owner Return % (of balance, until Advance recovered)', '<span style="color:#1a3fbf">' + xr2(ps.ownerRetPct) + '%</span>'] : null,
         +ps.consFeePct ? ['Consultant Fee % (of Total, Excl. VAT)', '<span style="color:#1a3fbf">' + xr2(ps.consFeePct) + '% = AED ' + aed(c.C * ps.consFeePct / 100) + '</span>'] : null,
         +ps.advToCons ? ['Consultant Advance (from Owner\'s Advance)', '<span style="color:#1a3fbf">AED ' + aed(ps.advToCons) + '</span>'] : null, c.consCap ? ['Consultant Balance (recovered from stages)', 'AED ' + aed(c.consCap)] : null,
         c.retDoneAt || c.consDoneAt ? ['Advance Recovery / Consultant Balance Complete At', esc([c.retDoneAt, c.consDoneAt].filter(Boolean).join(' / '))] : null])}</table>
     </div>
     <div class="ps-sec">PROPOSED PAYMENT SCHEDULE</div>
-    <table class="ps-t"><colgroup><col style="width:7mm"><col style="width:58mm"><col style="width:12mm"><col><col><col><col><col><col><col><col style="width:20mm"><col style="width:40mm"></colgroup>
-      <tr><th>#</th><th>Payment Stage / Work Item</th><th>% of Contract</th><th>Gross Amount (Excl. VAT) (AED)</th><th>VAT ${xr2(ps.vatPct)}% (Added Extra) (AED)</th><th>Maintenance ${xr2(ps.maintPct)}% Held (AED)</th><th>Balance (After Maintenance) (AED)</th><th>Owner Return ${xr2(ps.ownerRetPct)}% (AED)</th><th>Consultant Payment ${xr2(ps.consFeePct)}% (AED)</th><th>Net Payable to Contractor, Incl. VAT (AED)</th><th>Paid / Applied</th><th>Status</th></tr>
-      ${+ps.advance ? `<tr class="adv"><td class="n" style="text-align:center">1</td><td>Advance Payment (fixed amount, funded by Owner, paid directly)</td><td class="n">–</td><td class="n">${aed(ps.advance)}</td><td class="n">–</td><td class="n">–</td><td class="n">${aed(ps.advance)}</td><td class="n">–</td><td class="n">${d(+ps.advToCons)}</td><td class="n">${aed(c.advNet)}</td><td class="st">${ps.advStatus ? esc(ps.advStatus) + (ps.advDate ? '<br>' + dmy(ps.advDate) : '') : ''}</td><td class="st">Advance – Owner Funds</td></tr>` : ''}
-      ${rows.map((r, k) => `<tr class="${/Complete|Fully Recovered/.test(r.label) && (r.name === c.retDoneAt || r.name === c.consDoneAt) ? 'done' : ''}"><td class="n" style="text-align:center">${k + (+ps.advance ? 2 : 1)}</td><td>${esc(r.name)}</td><td class="n">${xr2(r.pct)}%</td><td class="n">${aed(r.gross)}</td><td class="n">${aed(r.vat)}</td><td class="n">${aed(r.maint)}</td><td class="n">${aed(r.bal)}</td><td class="n">${d(r.ret)}</td><td class="n">${d(r.cons)}</td><td class="n" style="font-weight:700">${aed(r.netVat)}</td><td class="st">${r.status ? esc(r.status) + (r.date ? '<br>' + dmy(r.date) : '') : ''}</td><td class="st">${esc(r.label)}</td></tr>`).join('')}
-      <tr class="tot"><td></td><td>Subtotal – Physical Progress / Work Items</td><td class="n">${xr2(c.tot.pct)}%</td><td class="n">${aed(c.tot.gross)}</td><td class="n">${aed(c.tot.vat)}</td><td class="n">${aed(c.tot.maint)}</td><td class="n">${aed(c.tot.bal)}</td><td class="n">${aed(c.tot.ret)}</td><td class="n">${aed(c.tot.cons)}</td><td class="n">${aed(c.tot.netVat)}</td><td></td><td></td></tr></table>
-    <div class="ps-b"><div style="background:#9c6500">MAINTENANCE HELD<b>AED ${aed(c.tot.maint)}</b></div><div style="background:#2f5597">RETURNED TO OWNER<b>AED ${aed(c.tot.ret)}</b></div>
-      <div style="background:#6f4ea0">CONSULTANT PAYMENT<b>AED ${aed(c.consTotal)}</b></div><div style="background:#7f4f00">NET TO CONTRACTOR (During Construction)<b>AED ${aed(c.netConstruction)}</b></div></div>
+    ${(() => { const hasRet = c.retCap > 0, hasCons = c.consCap > 0, hasPg = c.tot.pg > 0.005, stLab = { Paid: 'Paid', Applied: 'Applied', Cheque: 'Cheque – not cleared' };
+      const nCols = 7 + hasRet + hasCons + hasPg + 3;
+      const head = `<tr><th>#</th><th>Payment Stage / Work Item</th><th>% of ${+ps.baseValue ? 'Base' : 'Contract'}</th><th>Gross Amount (Excl. VAT) (AED)</th><th>VAT ${xr2(ps.vatPct)}% (Added Extra) (AED)</th><th>Maintenance ${xr2(ps.maintPct)}% Held (AED)</th><th>Balance (After Maintenance) (AED)</th>${hasRet ? `<th>Owner Return ${xr2(ps.ownerRetPct)}% (AED)</th>` : ''}${hasCons ? `<th>Consultant Payment ${xr2(ps.consFeePct)}% (AED)</th>` : ''}${hasPg ? `<th>Performance Guarantee ${xr2(ps.pgPct)}% (AED)</th>` : ''}<th>Net Payable to Contractor, Incl. VAT (AED)</th><th>Paid / Applied</th><th>Status</th></tr>`;
+      const adv = +ps.advance ? `<tr class="adv"><td class="n" style="text-align:center">1</td><td>Advance Payment (fixed amount, funded by Owner, paid directly)</td><td class="n">–</td><td class="n">${aed(ps.advance)}</td><td class="n">–</td><td class="n">–</td><td class="n">${aed(ps.advance)}</td>${hasRet ? '<td class="n">–</td>' : ''}${hasCons ? `<td class="n">${d(+ps.advToCons)}</td>` : ''}${hasPg ? '<td class="n">–</td>' : ''}<td class="n">${aed(c.advNet)}</td><td class="st">${ps.advStatus ? esc(stLab[ps.advStatus] || ps.advStatus) + (ps.advDate ? '<br>' + dmy(ps.advDate) : '') : ''}</td><td class="st">Advance – Owner Funds</td></tr>` : '';
+      const body = rows.map((r, k) => `<tr class="${/Complete|Fully Recovered/.test(r.label) && (r.name === c.retDoneAt || r.name === c.consDoneAt) ? 'done' : ''}"><td class="n" style="text-align:center">${k + (+ps.advance ? 2 : 1)}</td><td>${esc(r.name)}</td><td class="n">${xr2(r.pct)}%</td><td class="n">${aed(r.gross)}</td><td class="n">${aed(r.vat)}</td><td class="n">${aed(r.maint)}</td><td class="n">${aed(r.bal)}</td>${hasRet ? `<td class="n">${d(r.ret)}</td>` : ''}${hasCons ? `<td class="n">${d(r.cons)}</td>` : ''}${hasPg ? `<td class="n">${d(r.pg)}</td>` : ''}<td class="n" style="font-weight:700">${aed(r.netVat)}</td><td class="st">${r.status ? esc(stLab[r.status] || r.status) + (r.date ? '<br>' + dmy(r.date) : '') : ''}</td><td class="st">${esc(r.label)}</td></tr>`).join('');
+      const tot = `<tr class="tot"><td></td><td>${c.partial ? 'Total of these stages' : 'Subtotal – Physical Progress / Work Items'}</td><td class="n">${xr2(c.tot.pct)}%</td><td class="n">${aed(c.tot.gross)}</td><td class="n">${aed(c.tot.vat)}</td><td class="n">${aed(c.tot.maint)}</td><td class="n">${aed(c.tot.bal)}</td>${hasRet ? `<td class="n">${aed(c.tot.ret)}</td>` : ''}${hasCons ? `<td class="n">${aed(c.tot.cons)}</td>` : ''}${hasPg ? `<td class="n">${aed(c.tot.pg)}</td>` : ''}<td class="n">${aed(c.tot.netVat)}</td><td></td><td></td></tr>`;
+      const box = [['MAINTENANCE HELD', c.tot.maint, '#9c6500'], hasRet ? ['RETURNED TO OWNER', c.tot.ret, '#2f5597'] : null, hasCons ? ['CONSULTANT PAYMENT', c.consTotal, '#6f4ea0'] : null, hasPg ? ['PERFORMANCE GUARANTEE', c.tot.pg, '#2f5597'] : null,
+        c.partial ? ['PAID VALUE (excl. VAT)', c.valuePaid + c.chequeVal, '#2f5597'] : null, c.partial ? ['CONTRACT BALANCE', c.balance, '#6f4ea0'] : null, ['NET TO CONTRACTOR' + (c.partial ? ' (these stages)' : ' (During Construction)'), c.netConstruction, '#7f4f00']].filter(Boolean);
+      const ex = c.extras.length ? `<div class="ps-sec">NOT YET SCHEDULED</div><table class="ps-t"><colgroup><col style="width:7mm"><col style="width:80mm"><col style="width:30mm"><col style="width:60mm"><col></colgroup><tr><th>#</th><th>Item</th><th>Amount (AED)</th><th>Status</th><th>Note</th></tr>
+        ${c.extras.map((x, k) => `<tr><td class="n" style="text-align:center">${k + 1}</td><td>${esc(x.name)}${x.inContract ? '' : ' <i>(not in contract balance)</i>'}</td><td class="n">${aed(x.amount)}</td><td>${esc(x.status || '')}</td><td>${esc(x.note || '')}</td></tr>`).join('')}</table>` : '';
+      return `<table class="ps-t"><colgroup><col style="width:7mm"><col style="width:${58 - (nCols - 12) * 6}mm"><col style="width:12mm">${'<col>'.repeat(nCols - 6)}<col style="width:20mm"><col style="width:${c.partial ? 30 : 40}mm"></colgroup>${head}${adv}${body}${tot}</table>${ex}
+        <div class="ps-b" style="grid-template-columns:repeat(${box.length},1fr)">${box.map(([t, v, col]) => `<div style="background:${col}">${t}<b>AED ${aed(v)}</b></div>`).join('')}</div>
+        ${c.partial ? `<div class="ps-n" style="font-style:normal">Balance AED ${aed(c.balance)} = remaining stages ${aed(c.unpaid)}${c.extrasIn ? ' + ' + c.extras.filter(x => x.inContract).map(x => esc(x.name) + ' ' + aed(x.amount)).join(' + ') : ''}${Math.abs(c.diff) > 0.005 ? ' + schedule difference ' + aed(c.diff) : ''}.${+ps.statedTotal && Math.abs(+ps.statedTotal - c.tot.gross) > 0.005 ? ' The schedule states the total as AED ' + aed(ps.statedTotal) + ' but its stages add up to AED ' + aed(c.tot.gross) + ' (difference AED ' + aed(+ps.statedTotal - c.tot.gross) + ').' : ''}</div>` : ''}`; })()}
     <div class="ps-s"><div><b>Submitted by (Contractor)</b><br>Name: ____________________<br>Signature: ________________<br>Date: _____________________</div><div><b>Reviewed by (Consultant)</b><br>Name: ____________________<br>Signature: ________________<br>Date: _____________________</div><div><b>Approved by (Owner)</b><br>Name: ____________________<br>Signature: ________________<br>Date: _____________________</div></div>
-    <div class="ps-n">Note: Total Contract Value (AED ${aed(c.C)}) excludes VAT – VAT (${xr2(ps.vatPct)}%) is ADDED EXTRA to the Net Payable for each stage, not embedded within it.${c.advNet ? ' Contractor also receives AED ' + aed(c.advNet) + ' net from the Advance' + (+ps.advToCons ? ' (after the AED ' + aed(ps.advToCons) + ' Consultant advance)' : '') + '.' : ''} Maintenance/retention (AED ${aed(c.tot.maint)}) is held back and released later, per terms to be confirmed.</div>
+    <div class="ps-n">${ps.notes ? esc(ps.notes) + ' ' : ''}Note: Total Contract Value (AED ${aed(c.C)}) excludes VAT – VAT (${xr2(ps.vatPct)}%) is ADDED EXTRA to the Net Payable for each stage, not embedded within it.${c.advNet ? ' Contractor also receives AED ' + aed(c.advNet) + ' net from the Advance' + (+ps.advToCons ? ' (after the AED ' + aed(ps.advToCons) + ' Consultant advance)' : '') + '.' : ''} Maintenance/retention (AED ${aed(c.tot.maint)}) is held back and released later, per terms to be confirmed.</div>
   </div>`;
   docOut('Payment Schedule ' + code, 'a4l');
 }
@@ -3952,7 +3991,17 @@ const XWP = [
   ['Testing & Handover', 'Consultant inspection, completion certificate & handover', 71, 2, 0.5]];
 const XPH_COL = { 'Preliminaries': '#7f7f7f', 'Substructure': '#4d4d4d', 'Superstructure': '#a6a6a6', 'Service Block': '#8eaadb', 'Block Work': '#bf9000',
   'Boundary Wall': '#375623', 'Outside Works': '#9c6500', 'MEP - First Fix': '#2e75b6', 'Waterproofing': '#1ea0d8', 'Plaster': '#8497b0', 'Aluminium': '#ffc000',
-  'Ceiling Finish': '#a9d18e', 'Ceramic & Marble': '#7030a0', 'Paint': '#c55a11', 'Wood Works': '#d9a441', 'Bath Fittings': '#e06666', 'MEP - Second Fix': '#1f4e79', 'Testing & Handover': '#c00000' };
+  'Ceiling Finish': '#a9d18e', 'Ceramic & Marble': '#7030a0', 'Paint': '#c55a11', 'Wood Works': '#d9a441', 'Bath Fittings': '#e06666', 'MEP - Second Fix': '#1f4e79', 'Testing & Handover': '#c00000',
+  // other spellings used in submitted schedules
+  'Sub-Structure': '#4d4d4d', 'Super-Structure': '#a6a6a6', 'MEP First Fix': '#2e75b6', 'MEP Second Fix': '#1f4e79', 'External Drainage': '#9c6500', 'Aluminium & Woodwork': '#d9a441', 'Painting': '#c55a11' };
+/* progress tracker status of one activity (planned vs actual) */
+function xActStatus(it, td){
+  td = td || today(); const pe = xActEnd(it), pct = +it.pct || 0;
+  const delay = it.af ? xDaysBetween(pe, it.af) : null;          // actual finish − planned finish (days)
+  const st = pct >= 100 || it.af ? 'Completed' : pct > 0 || it.as ? (pe < td ? 'In Progress – Delayed' : 'In Progress') : (it.start < td ? 'Not Started – Overdue' : 'Not Started');
+  const lateSoFar = st === 'In Progress – Delayed' || (st === 'Not Started – Overdue' && pe < td) ? xDaysBetween(pe, td) : 0;
+  return { st, delay, lateSoFar, cls: st === 'Completed' ? 'Approved' : /Delayed|Overdue/.test(st) ? 'Rejected' : st === 'In Progress' ? 'Confirmed' : 'Pending' };
+}
 const xPhCol = ph => XPH_COL[ph] || '#5b8bd6';
 /* BOQ section of each phase (Al Tarwi BOQ layout: V = villa, SB = service block, BW = boundary wall). Item numbers differ per BOQ – add them per activity. */
 const XPH_BOQ = { 'Preliminaries': 'V-A', 'Substructure': 'V-B', 'Superstructure': 'V-C', 'Block Work': 'V-D', 'Plaster': 'V-E', 'Paint': 'V-F', 'Ceramic & Marble': 'V-G',
@@ -3993,7 +4042,7 @@ function xSchFromTemplate(start, months, code){
 }
 async function xSchSave(code, s, msg){
   const st = xSchStats(s), hist = (s.hist || []).filter(h => h.d !== today()); hist.push({ d: today(), a: st.actual });
-  const send = { start: s.start, months: s.months || '', items: s.items, hist };
+  const send = { start: s.start, months: s.months || '', ref: s.ref || '', notes: s.notes || '', items: s.items, hist };
   X.d = await server('expSaveSchedule', code, send, X.pin); keep('exp.cache', X.d); toast(msg || 'Saved');
 }
 /* S-curve: planned (line) vs actual (dots from the saved history) */
@@ -4067,12 +4116,17 @@ function xProjProgress(code){
       <div class="x-row"><div><i>Planned today</i>${st.plan}%</div><div><i>Finish (programme)</i>${dmy(st.finish)}</div><div><i>Late activities</i>${st.late.length}</div></div>${xBar(dst.actual, 100)}</div>
     <div class="x-sec">S-curve</div>${xSCurve(s)}
     <div class="x-sec">Update % done <span class="hint" style="font-weight:500">slide, then Save</span></div>
-    <div class="x-list">${dr.items.map((it, i) => { const pl = Math.round(xSchStats({ items: [it] }).plan), late = +it.pct < 100 && xActEnd(it) < today();
-      return `<div class="x-it" style="cursor:default;display:block"><div style="display:flex;justify-content:space-between;gap:8px"><b style="${late ? 'color:var(--danger)' : ''}">${esc(it.name)}</b><b id="xpg-v${i}">${+it.pct}%</b></div>
-        <small class="hint">${dmy(it.start)} → ${dmy(xActEnd(it))} · weight ${it.w}% · planned now ${pl}%${late ? ' · LATE' : ''}</small>
+    ${(() => { const ms = s.items.filter(it => it.ms); return ms.length ? `<div class="x-sec">Key milestones</div><div class="card"><div class="body" style="padding:8px 14px">${ms.map(it => { const x = xActStatus(it);
+      return `<div class="x-vrow"><span>${x.st === 'Completed' ? '✓' : /Overdue|Delayed/.test(x.st) ? '!' : '○'} ${esc(it.ms)}</span><b style="${/Overdue|Delayed/.test(x.st) ? 'color:var(--danger)' : x.st === 'Completed' ? 'color:var(--ok)' : ''}">${dmy(it.af || xActEnd(it))}${it.af ? ' (actual)' : ''}</b></div>`; }).join('')}</div></div>` : ''; })()}
+    <div class="x-sec">Update % done <span class="hint" style="font-weight:500">slide, then Save · tap a name for actual dates & remarks</span></div>
+    <div class="x-list">${dr.items.map((it, i) => { const pl = Math.round(xSchStats({ items: [it] }).plan), x = xActStatus(it), bad = /Delayed|Overdue/.test(x.st);
+      return `<div class="x-it" style="cursor:default;display:block"><div style="display:flex;justify-content:space-between;gap:8px"><b data-xact="${i}" style="cursor:pointer;${bad ? 'color:var(--danger)' : ''}">${s.items.some(t => t.resp) ? (i + 1) + '. ' : ''}${esc(it.name)}</b><b id="xpg-v${i}">${+it.pct}%</b></div>
+        <small class="hint">${it.resp ? esc(it.resp) + ' · ' : ''}${dmy(it.start)} → ${dmy(xActEnd(it))}${it.as || it.af ? ` · actual ${it.as ? dmy(it.as) : '?'} → ${it.af ? dmy(it.af) : '…'}` : ''} · planned now ${pl}%</small>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:3px"><span class="x-st ${x.cls}">${x.st}</span>${x.delay != null && x.delay !== 0 ? `<small class="hint">${x.delay > 0 ? x.delay + ' days late' : -x.delay + ' days early'}</small>` : x.lateSoFar ? `<small class="hint" style="color:var(--danger)">${x.lateSoFar} days past planned finish</small>` : ''}${it.rem ? `<small class="hint">· ${esc(it.rem)}</small>` : ''}</div>
         <input type="range" min="0" max="100" step="5" value="${+it.pct}" data-xpg="${i}" aria-label="% done ${esc(it.name)}" style="width:100%;margin-top:6px"></div>`; }).join('')}</div>
     <div class="x-big" style="margin-top:10px"><button class="in" data-xpgsave="${esc(code)}">Save progress<small>${X.schDraft && X.schDraft.code === code ? 'Changes not saved yet' : 'Saves today’s % for the S-curve'}</small></button>
       <button class="out" data-xschprint="${esc(code)}">Progress report<small>Print / WhatsApp</small></button></div>
+    <button class="btn sec" data-xtrkprint="${esc(code)}" style="width:100%;margin-top:10px">Progress tracker – planned vs actual (A4 landscape)</button>
     ${xIsAdmin() ? `<button class="btn sec" data-xreqnew="${esc(code)}" style="width:100%;margin-top:10px">Payment request from this progress (${dst.actual}%)</button>` : ''}`;
 }
 /* Schedule (Gantt) tab */
@@ -4106,12 +4160,15 @@ function xAfInfo(){
 }
 function xActForm(code, i){
   const s = JSON.parse(JSON.stringify(xSch(code))), isNew = i === 'new', it = isNew ? { id: 'a' + Date.now(), name: '', w: 0, start: today(), dur: 14, pct: 0 } : s.items[+i];
+  X.actFrom = X.projTab === 'prog' ? 'prog' : 'gantt';
   X.actf = { code, i, s, it, orig: isNew ? null : { start: it.start, dur: +it.dur }, shift: !isNew }; X.view = 'actf';
   xMain().innerHTML = `<div class="x-form"><div class="card"><h2>${isNew ? 'NEW ACTIVITY' : 'ACTIVITY'}</h2><div class="body">
       <div><label>Activity</label><input data-xaf="name" value="${esc(it.name)}"></div>
       <div><label for="xaf-ph">Phase (colour on the chart)</label><input id="xaf-ph" data-xaf="ph" list="xph-list" value="${esc(it.ph || '')}" placeholder="e.g. Superstructure">
         <datalist id="xph-list">${Object.keys(XPH_COL).map(p => `<option value="${esc(p)}">`).join('')}</datalist></div>
-      <div><label for="xaf-boq">BOQ ref. (sheet / section / items)</label><input id="xaf-boq" data-xaf="boq" value="${esc(it.boq || '')}" placeholder="e.g. V-C / 17-18"></div>
+      <div class="x-two"><div><label for="xaf-boq">BOQ ref. (sheet / section / items)</label><input id="xaf-boq" data-xaf="boq" value="${esc(it.boq || '')}" placeholder="e.g. V-C / 17-18"></div>
+        <div><label for="xaf-resp">Responsible</label><input id="xaf-resp" data-xaf="resp" list="xresp-list" value="${esc(it.resp || '')}" placeholder="e.g. Civil Team">
+          <datalist id="xresp-list">${[...new Set(s.items.map(x => x.resp).filter(Boolean))].map(r => `<option value="${esc(r)}">`).join('')}</datalist></div></div>
       <div class="x-two"><div><label for="xaf-start">Start</label><input type="date" id="xaf-start" data-xaf="start" value="${esc(it.start)}"></div><div><label for="xaf-fin">Finish</label><input type="date" id="xaf-fin" data-xaf="end" value="${esc(xActEnd(it))}"></div></div>
       <div><label for="xaf-dur">Duration (days)</label><div style="display:flex;gap:8px;align-items:center">
         <button type="button" class="btn sec" data-xafstep="-7" aria-label="7 days less">−7</button><button type="button" class="btn sec" data-xafstep="-1" aria-label="1 day less">−1</button>
@@ -4121,6 +4178,12 @@ function xActForm(code, i){
       ${isNew ? '' : `<label style="display:flex;gap:8px;align-items:flex-start;font-weight:500;margin-top:4px"><input type="checkbox" data-xafshift checked style="width:auto;margin-top:3px"> <span>Move the activities that come after this one by the same number of days</span></label>`}
       <p class="hint" id="xaf-end"></p>
       <p class="hint">Total weight of all activities: ${xr2(s.items.reduce((a, x) => a + (+x.w || 0), 0) + (isNew ? +it.w || 0 : 0))}% (best = 100%).</p>
+    </div></div>
+    <div class="card"><h2>PROGRESS (ACTUAL)</h2><div class="body">
+      <div class="x-two"><div><label for="xaf-as">Actual start</label><input type="date" id="xaf-as" data-xaf="as" value="${esc(it.as || '')}"></div><div><label for="xaf-af">Actual finish</label><input type="date" id="xaf-af" data-xaf="af" value="${esc(it.af || '')}"></div></div>
+      <div><label for="xaf-rem">Remarks</label><input id="xaf-rem" data-xaf="rem" value="${esc(it.rem || '')}" placeholder="e.g. Sub-let to …, waiting for approval"></div>
+      <div><label for="xaf-ms">Milestone (if this activity ends one)</label><input id="xaf-ms" data-xaf="ms" value="${esc(it.ms || '')}" placeholder="e.g. Sub-structure complete"></div>
+      <p class="hint" id="xaf-st" style="margin:0">${(t => `Status: <b>${t.st}</b>${t.delay != null ? ' · delay ' + t.delay + ' days' : t.lateSoFar ? ' · ' + t.lateSoFar + ' days past planned finish' : ''}`)(xActStatus(it))}. An actual finish date marks it 100% done.</p>
     </div></div><p class="x-ferr" id="xaf-err"></p>
     ${isNew ? '' : `<button class="btn sec" data-xactdel style="color:var(--danger);width:100%">Remove this activity</button>`}</div>
     <div class="x-save"><div><button class="btn sec" data-xactback>Cancel</button><button class="btn ok" id="xaf-save">Save</button></div></div>`;
@@ -4164,17 +4227,52 @@ async function xWpPrint(code){
     <div class="wp-band"><div class="wp-logo"><img src="${logo || LOGO}" alt=""><b>AL TARWI<span>BUILDING CONTRACTING</span></b></div>
       <div class="wp-tt"><b>${title}</b><div>${line1}</div><div>${line2}</div></div></div>
     <table class="wp-t"><colgroup><col style="width:6mm"><col style="width:21mm"><col style="width:61mm"><col style="width:15mm"><col style="width:8mm"><col style="width:7mm"><col style="width:8mm">${showPct ? '<col style="width:8mm">' : ''}${`<col style="width:${colW}mm">`.repeat(cols)}</colgroup>
-      <thead><tr><th rowspan="2">No.</th><th rowspan="2">Phase</th><th rowspan="2">Activity Description</th><th rowspan="2">BOQ Ref.</th><th rowspan="2">Start Wk</th><th rowspan="2">Dur (wk)</th><th rowspan="2">End Wk</th>${showPct ? '<th rowspan="2">Done</th>' : ''}
+      <thead><tr><th rowspan="2">No.</th><th rowspan="2">Phase</th><th rowspan="2">Activity Description</th><th rowspan="2">${items.some(t => t.boq && t.boq !== '-') || !items.some(t => t.resp) ? 'BOQ Ref.' : 'Responsible'}</th><th rowspan="2">Start Wk</th><th rowspan="2">Dur (wk)</th><th rowspan="2">End Wk</th>${showPct ? '<th rowspan="2">Done</th>' : ''}
         ${grp.map((g, k) => `<th colspan="${g.n}" title="${g.k}">${g.n * colW >= 7 ? 'Month ' + (k + 1) : k + 1}${g.n * colW >= 14 ? ' · ' + new Date(g.d + 'T12:00').toLocaleString('en-GB', { month: 'short', year: '2-digit' }) : ''}</th>`).join('')}</tr>
         <tr class="wk">${Array.from({ length: cols }, (_, c) => `<th class="${c === tc ? 'tc' : ''}">${unit === 1 ? c + 1 : c * 2 + 1}</th>`).join('')}</tr></thead>
       <tbody>${items.map((it, i) => { const sw = wk(it.start), ew = wk(xActEnd(it)), col = it.ph ? xPhCol(it.ph) : '#5b8bd6';
-        return `<tr><td class="c">${i + 1}</td><td>${esc(it.ph || '')}</td><td>${esc(it.name)}</td><td class="b">${esc(it.boq || '')}</td><td class="c">${sw}</td><td class="c">${ew - sw + 1}</td><td class="c">${ew}</td>${showPct ? `<td class="c">${+it.pct}%</td>` : ''}
+        return `<tr><td class="c">${i + 1}</td><td>${esc(it.ph || '')}</td><td>${esc(it.name)}</td><td class="b">${esc(items.some(t => t.boq && t.boq !== '-') || !items.some(t => t.resp) ? it.boq || '' : it.resp || '')}</td><td class="c">${sw}</td><td class="c">${ew - sw + 1}</td><td class="c">${ew}</td>${showPct ? `<td class="c">${+it.pct}%</td>` : ''}
           ${Array.from({ length: cols }, (_, c) => { const a = c * unit + 1, b = a + unit - 1, on = sw <= b && ew >= a;
             return `<td class="g${c === tc ? ' tc' : ''}"${on ? ` style="background:${col}"` : ''}></td>`; }).join('')}</tr>`; }).join('')}</tbody></table>
     ${ph.length ? `<div class="wp-leg"><b style="margin-right:2mm">Phase legend:</b>${ph.map(p => `<span><i style="background:${xPhCol(p)}"></i>${esc(p)}</span>`).join('')}</div>` : ''}
     <div class="wp-note">Bars show planned working weeks per activity. Week 1 starts on ${dmy(start)} (site commencement / handover).${unit > 1 ? ' Each grid column = 2 weeks.' : ''}${tc >= 0 ? ' Red line = this week (week ' + tw + ').' : ''} Overlaps reflect standard construction sequencing. Printed ${dmy(today())}.</div>
   </div>`;
   docOut('Work Programme ' + code, 'a4l');
+}
+/* printed PROGRESS TRACKER: planned vs actual per activity, status, delay, remarks + key milestones (A4 landscape) */
+async function xTrkPrint(code){
+  const s = xSch(code); if (!s) return; const si = xSite(code) || {}, st = xSchStats(s), logo = await lhLogo(), n = s.items.length;
+  const rowH = Math.max(2.7, Math.min(4.6, 140 / Math.max(n, 1))).toFixed(2), ms = s.items.filter(it => it.ms);
+  const cnt = {}; s.items.forEach(it => { const k = xActStatus(it).st; cnt[k] = (cnt[k] || 0) + 1; });
+  $('sheet').innerHTML = `<style>
+    @page{size:A4 landscape;margin:6mm}
+    #sheet .tk{width:285mm;font:6pt/1.15 Arial,'Segoe UI',sans-serif;color:#18212f;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    #sheet .tk-band{display:flex;align-items:center;gap:4mm;background:#1f4e79;color:#fff;padding:2mm 4mm;border-radius:1mm}
+    #sheet .tk-logo{background:#fff;border-radius:1.2mm;padding:1mm 1.6mm;display:flex;align-items:center;gap:1.6mm;flex:none}#sheet .tk-logo img{height:8mm}#sheet .tk-logo b{color:#1F2A6B;font:800 6.6pt Arial;line-height:1.1}#sheet .tk-logo b span{display:block;color:#1D7FD1}
+    #sheet .tk-tt{flex:1;text-align:center}#sheet .tk-tt b{display:block;font:800 10pt Arial;margin-bottom:.6mm}#sheet .tk-tt div{font-size:6.4pt}
+    #sheet .tk-sum{display:flex;flex-wrap:wrap;gap:1.5mm 5mm;margin:1.4mm 0;font-size:6.4pt}#sheet .tk-sum b{color:#1f4e79}
+    #sheet table.tk-t{width:285mm;border-collapse:collapse;table-layout:fixed}
+    #sheet .tk-t th{background:#bdd7ee;color:#1f3b5b;font-size:5.7pt;padding:.6mm .6mm;border:.2mm solid #9fb5cf;line-height:1.05}
+    #sheet .tk-t td{border:.2mm solid #c8d2e0;padding:0 .8mm;height:${rowH}mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    #sheet .tk-t td.c{text-align:center}#sheet .tk-t i{display:inline-block;width:1.6mm;height:2.2mm;margin-right:.8mm;vertical-align:middle}
+    #sheet .tk-s{font-weight:700;font-size:5.6pt}#sheet .tk-s.Approved{color:#17734a}#sheet .tk-s.Rejected{color:#c00000}#sheet .tk-s.Confirmed{color:#1f4e79}#sheet .tk-s.Pending{color:#6b7a90}
+    #sheet .tk-ms{display:grid;grid-template-columns:repeat(4,1fr);gap:.6mm 3mm;margin-top:1.6mm;font-size:5.8pt}#sheet .tk-ms div{border-bottom:.2mm dotted #c8d2e0;display:flex;justify-content:space-between;gap:2mm}
+  </style>
+  <div class="tk">
+    <div class="tk-band"><div class="tk-logo"><img src="${logo || LOGO}" alt=""><b>AL TARWI<span>BUILDING CONTRACTING</span></b></div>
+      <div class="tk-tt"><b>PROGRESS TRACKER – PLANNED vs ACTUAL — ${esc(String(si.project || code).toUpperCase())}</b>
+        <div>${[si.client ? 'Client: ' + esc(si.client) : '', si.consultant ? 'Consultant: ' + esc(si.consultant) : '', si.plot ? 'Plot ' + esc(si.plot) : '', s.ref ? 'Ref. ' + esc(s.ref) : '', 'Project ' + esc(code)].filter(Boolean).join('  |  ')}</div>
+        <div>Programme ${dmy(st.start)} → ${dmy(st.finish)}${s.months ? ' (' + s.months + ' months)' : ''}  |  Status as of ${dmy(today())}</div></div></div>
+    <div class="tk-sum"><span>Work done <b>${st.actual}%</b> (planned today ${st.plan}%)</span>${['Completed', 'In Progress', 'In Progress – Delayed', 'Not Started – Overdue', 'Not Started'].filter(k => cnt[k]).map(k => `<span>${k}: <b>${cnt[k]}</b></span>`).join('')}<span>Total activities: <b>${n}</b></span></div>
+    <table class="tk-t"><colgroup><col style="width:6mm"><col style="width:22mm"><col style="width:66mm"><col style="width:26mm"><col style="width:15mm"><col style="width:15mm"><col style="width:15mm"><col style="width:15mm"><col style="width:8mm"><col style="width:26mm"><col style="width:10mm"><col></colgroup>
+      <thead><tr><th>No.</th><th>Phase</th><th>Activity</th><th>Responsible</th><th>Planned start</th><th>Planned finish</th><th>Actual start</th><th>Actual finish</th><th>% done</th><th>Status</th><th>Delay (days)</th><th>Remarks</th></tr></thead>
+      <tbody>${s.items.map((it, i) => { const x = xActStatus(it);
+        return `<tr><td class="c">${i + 1}</td><td><i style="background:${it.ph ? xPhCol(it.ph) : '#ccc'}"></i>${esc(it.ph || '')}</td><td>${esc(it.name)}</td><td>${esc(it.resp || '')}</td><td class="c">${dmy(it.start)}</td><td class="c">${dmy(xActEnd(it))}</td>
+          <td class="c">${it.as ? dmy(it.as) : ''}</td><td class="c">${it.af ? dmy(it.af) : ''}</td><td class="c">${+it.pct}%</td><td class="tk-s ${x.cls}">${x.st}</td><td class="c">${x.delay != null ? x.delay : ''}</td><td>${esc(it.rem || '')}</td></tr>`; }).join('')}</tbody></table>
+    ${ms.length ? `<div class="tk-ms">${ms.map(it => `<div><span>${esc(it.ms)}</span><b>${dmy(it.af || xActEnd(it))}${it.af ? ' ✓' : ''}</b></div>`).join('')}</div>` : ''}
+    ${s.notes ? `<div style="margin-top:1.2mm;font-size:5.6pt;color:#4a5a70;font-style:italic">${esc(s.notes)}</div>` : ''}
+  </div>`;
+  docOut('Progress Tracker ' + code, 'a4l');
 }
 function xSchPrint(code){
   const s = xSch(code); if (!s) return; const st = xSchStats(s), si = xSite(code);
@@ -4876,6 +4974,7 @@ $('exp').addEventListener('click', async e => {
     try { await xSchSave(code, s, 'Progress saved – ' + xSchStats(s).actual + '% done'); X.schDraft = null; xSitePage(code); } catch (er) { toast(errText(er)); b.disabled = false; } return; }
   if (D.xschprint) return xSchPrint(D.xschprint);
   if (D.xwpprint) return xWpPrint(D.xwpprint);
+  if (D.xtrkprint) return xTrkPrint(D.xtrkprint);
   /* ----- stage payment schedule ----- */
   if (D.xpsnew) { X.siteCode = D.xpsnew; return xPaySchForm(D.xpsnew); }
   if (D.xpsedit) return xPaySchForm(D.xpsedit);
@@ -4883,6 +4982,8 @@ $('exp').addEventListener('click', async e => {
   if (D.xpstg != null && D.xpstg !== '') return xPayStage(X.siteCode, D.xpstg);
   if ('xpsadd' in D && X.psf) { X.psf.ps.stages.push({ name: '', pct: 0, status: '', date: '', ref: '' }); $('xpf-st').innerHTML = xPsStageRows(X.psf.ps); xPsChecks(); return; }
   if (D.xpsdel != null && X.psf) { X.psf.ps.stages.splice(+D.xpsdel, 1); $('xpf-st').innerHTML = xPsStageRows(X.psf.ps); xPsChecks(); return; }
+  if ('xpxadd' in D && X.psf) { (X.psf.ps.extras = X.psf.ps.extras || []).push({ name: '', amount: '', status: '', note: '', inContract: false }); $('xpf-ex').innerHTML = xPsExtraRows(X.psf.ps); return; }
+  if (D.xpxdel != null && X.psf) { X.psf.ps.extras.splice(+D.xpxdel, 1); $('xpf-ex').innerHTML = xPsExtraRows(X.psf.ps); xPsChecks(); return; }
   if ('xpfrate' in D && X.psf) { const A = X.psf, k = +$('xpf-upto').value, rate = xPsConsRate(A.ps, xPsContract(A.code), k);
     if (!(+A.ps.consFeePct > 0)) return toast('Enter the consultant fee % first');
     A.ps.consPct = String(Math.round(rate * 1e12) / 1e12); $('xpf-consPct').value = A.ps.consPct; xPsChecks(); toast('Recovery % set to ' + A.ps.consPct + '% – ends at stage ' + (k + 1)); return; }
@@ -4892,15 +4993,15 @@ $('exp').addEventListener('click', async e => {
   if (b.id === 'xpt-save' && X.pst) { const P = X.pst, ps = JSON.parse(JSON.stringify(xPs(P.code)));
     if (P.status && !/^\d{4}-\d{2}-\d{2}$/.test(P.date || '')) { $('xpt-err').textContent = 'Choose the date.'; return; }
     if (P.i === 'adv') Object.assign(ps, { advStatus: P.status, advDate: P.status ? P.date : '' });
-    else Object.assign(ps.stages[+P.i], { status: P.status, date: P.status ? P.date : '', ref: P.ref || '' });
+    else Object.assign(ps.stages[+P.i], { status: P.status, date: P.status ? P.date : '', ref: P.ref || '', note: P.note || '' });
     b.disabled = true; b.textContent = 'Saving…';
     try { X.d = await server('expSavePaySch', P.code, ps, X.pin); keep('exp.cache', X.d); toast('Status saved'); X.pst = null; X.siteCode = P.code; xGo('paysch'); }
     catch (er) { $('xpt-err').textContent = errText(er); b.disabled = false; b.textContent = 'Save status'; } return; }
   if (D.xact != null && D.xact !== '') return xActForm(X.siteCode, D.xact);
   if (D.xafstep && X.actf) { const it = X.actf.it; it.dur = Math.max(1, (Math.round(+it.dur) || 1) + +D.xafstep); $('xaf-dur').value = it.dur; xAfInfo(); return; }
-  if ('xactback' in D) { X.projTab = 'gantt'; return xSitePage(X.siteCode); }
+  if ('xactback' in D) { X.projTab = X.actFrom || 'gantt'; return xSitePage(X.siteCode); }
   if ('xactdel' in D && X.actf) { const A = X.actf; if (!await ask(`Remove "${A.it.name}" from the programme?`, 'Remove')) return;
-    A.s.items.splice(+A.i, 1); try { await xSchSave(A.code, A.s, 'Activity removed'); X.actf = null; X.projTab = 'gantt'; xSitePage(A.code); } catch (er) { toast(errText(er)); } return; }
+    A.s.items.splice(+A.i, 1); try { await xSchSave(A.code, A.s, 'Activity removed'); X.actf = null; X.projTab = X.actFrom || 'gantt'; xSitePage(A.code); } catch (er) { toast(errText(er)); } return; }
   if (b.id === 'xaf-save' && X.actf) { const A = X.actf, it = A.it;
     if (!String(it.name).trim()) { $('xaf-err').textContent = 'Enter the activity name.'; return; }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(it.start)) { $('xaf-err').textContent = 'Choose the start date.'; return; }
@@ -4910,7 +5011,7 @@ $('exp').addEventListener('click', async e => {
       if (d) xAfLater(A).forEach(x => { x.start = xAddDays(x.start, d) || x.start; moved++; }); }
     if (A.i === 'new') A.s.items.push(it); else A.s.items[+A.i] = it;
     A.s.items.sort((p, q) => p.start.localeCompare(q.start));
-    b.disabled = true; try { await xSchSave(A.code, A.s, 'Activity saved' + (moved ? ' – ' + moved + ' later activit' + (moved > 1 ? 'ies' : 'y') + ' moved' : '')); X.actf = null; X.projTab = 'gantt'; xSitePage(A.code); } catch (er) { $('xaf-err').textContent = errText(er); b.disabled = false; } return; }
+    b.disabled = true; try { await xSchSave(A.code, A.s, 'Activity saved' + (moved ? ' – ' + moved + ' later activit' + (moved > 1 ? 'ies' : 'y') + ' moved' : '')); X.actf = null; X.projTab = X.actFrom || 'gantt'; xSitePage(A.code); } catch (er) { $('xaf-err').textContent = errText(er); b.disabled = false; } return; }
   if (D.xschshift) { const code = D.xschshift, n = prompt('Move the whole programme by how many days?\n(e.g. 14 = two weeks later, -7 = one week earlier)'); if (n == null) return;
     const k = Math.round(+n); if (!k) return toast('Enter a number of days');
     const s = JSON.parse(JSON.stringify(xSch(code))); s.items.forEach(it => { it.start = xAddDays(it.start, k) || it.start; }); s.start = xAddDays(s.start, k) || s.start;
@@ -5178,11 +5279,17 @@ $('exp').addEventListener('input', e => {
   if (t.dataset.xaf && X.actf) { const it = X.actf.it, k = t.dataset.xaf;
     if (k === 'end') { if (/^\d{4}-\d{2}-\d{2}$/.test(t.value) && t.value >= it.start) it.dur = xDaysBetween(it.start, t.value) + 1; }   // finish typed: duration worked out
     else it[k] = t.value;
+    if (k === 'af' && /^\d{4}-\d{2}-\d{2}$/.test(t.value)) { it.pct = 100; const p = document.querySelector('[data-xaf="pct"]'); if (p) p.value = 100; }   // finished = 100%
+    if (/^(as|af|pct|start|dur|end)$/.test(k) && $('xaf-st')) { const x = xActStatus(Object.assign({}, it, { dur: Math.max(1, Math.round(+it.dur || 1)) }));
+      $('xaf-st').innerHTML = `Status: <b>${x.st}</b>${x.delay != null ? ' · delay ' + x.delay + ' days' : x.lateSoFar ? ' · ' + x.lateSoFar + ' days past planned finish' : ''}. An actual finish date marks it 100% done.`; }
     xAfInfo(); return; }
   if ('xafshift' in t.dataset && X.actf) { X.actf.shift = t.checked; xAfInfo(); return; }
   if (t.dataset.xpf && X.psf) { X.psf.ps[t.dataset.xpf] = t.value; xPsChecks(); return; }
   if (t.dataset.xps && X.psf) { const [i, k] = t.dataset.xps.split('|'); X.psf.ps.stages[+i][k] = t.value; xPsChecks(); return; }
   if (t.dataset.xpt && X.pst) { X.pst[t.dataset.xpt] = t.value; return; }
+  if ('xpfpart' in t.dataset && X.psf) { X.psf.ps.partial = t.checked; xPsChecks(); return; }
+  if (t.dataset.xpxin != null && X.psf) { X.psf.ps.extras[+t.dataset.xpxin].inContract = t.checked; xPsChecks(); return; }
+  if (t.dataset.xpx && X.psf) { const [i, k] = t.dataset.xpx.split('|'); X.psf.ps.extras[+i][k] = t.value; xPsChecks(); return; }
   if (t.closest('[data-xsa]') && t.type !== 'checkbox') { const r = t.closest('[data-xsa]'), st = r.querySelector('input[type=date]').value, mo = +r.querySelector('input[type=number]').value;
     r.querySelector('[data-xsafin]').textContent = /^\d{4}-\d{2}-\d{2}$/.test(st) && mo > 0 ? 'Finishes ' + dmy(xAddDays(st, xMonthsDays(st, mo) - 1)) + ' · ' + xMonthsDays(st, mo) + ' days' : 'Enter the months to see the finish date.'; return; }
   if ('xprojq' in t.dataset) { X.projQ = t.value; clearTimeout(X._pq); X._pq = setTimeout(() => { xSites(); const q = document.querySelector('[data-xprojq]'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 300); return; }
