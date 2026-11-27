@@ -2387,6 +2387,7 @@ function xForm(){
   const chips = (key, list) => `<div class="x-chips" data-xchip="${key}">${list.map(v => `<button type="button" class="${f[key] === v ? 'on' : ''}" data-v="${esc(v)}">${esc(v)}</button>`).join('')}</div>`;
   xMain().innerHTML = `<div class="x-form">
    <div class="card"><h2>${f.id ? 'EDIT ' + esc(f.voucher) : bl ? 'SUPPLIER / SUBCONTRACTOR BILL' : out ? 'NEW EXPENSE' : tr ? 'HAND OVER CASH' : rc ? 'ADVANCE RECOVERY' : cr ? 'CLIENT RECEIPT' : bk ? 'BANK ENTRY' : 'CASH RECEIVED'}</h2><div class="body">
+    ${(out || bl) && f._trans ? `<div class="x-next" style="margin:0"><b>English translation of the Arabic bill</b><p style="margin:6px 0 0;white-space:pre-wrap">${esc(f._trans)}</p><p class="hint" style="margin:6px 0 0">Saved in Remarks with the entry.</p></div>` : ''}
     ${out || bl ? '<button type="button" class="btn sec x-scanbtn" data-xscan="bill">Scan bill / receipt (photo or PDF)</button>' : cr && f.method === 'Cheque' ? '<button type="button" class="btn sec x-scanbtn" data-xscan="cheque">Scan cheque photo</button>' : ''}
     <div><label for="xf-amount">Amount (AED)</label><input id="xf-amount" class="x-amt" data-xi="amount" inputmode="decimal" value="${esc(f.amount || '')}" placeholder="0.00"></div>
     <div class="x-two"><div><label for="xf-date">Date</label><input type="date" id="xf-date" data-xi="date" value="${esc(f.date)}"></div>
@@ -3296,8 +3297,11 @@ xScanIn.onchange = async () => {
         const lines = (o.lines || []).filter(l => l && (l.desc || l.amount)).map(l => ({ desc: String(l.desc || '').trim(), qty: String(l.qty || '').trim(), unit: String(l.unit || '').trim(), rate: String(l.rate || '').trim(), amount: String(l.amount || '').trim() }));
         if (lines.length) { f.lines = lines; if (!f.item) f.item = lines.length === 1 ? lines[0].desc : lines[0].desc + ' + ' + (lines.length - 1) + ' more'; }
         if (o.invoiceNo && !f.desc) f.desc = 'Bill No. ' + o.invoiceNo;
+        if (o.arabic && String(o.translation || '').trim()) {          // Arabic bill: keep the English translation with the entry
+          const tr = 'Arabic bill – translation: ' + (o.supplierArabic ? '(' + String(o.supplierArabic).trim() + ') ' : '') + String(o.translation).trim();
+          f.remarks = f.remarks ? f.remarks + ' | ' + tr : tr; f._trans = String(o.translation).trim(); }
         f.qty = ''; f.rate = ''; xSupplierFill(f);
-        toast('Bill read – check the amount, site and category');
+        toast(o.arabic ? 'Arabic bill read and translated – check the amount, site and category' : 'Bill read – check the amount, site and category');
       } else toast('Photo saved, but it could not be read: ' + (r.note || 'try a clearer photo'));
       xForm();
     } else {
