@@ -118,6 +118,7 @@ label.add{display:block;text-align:center}
   body.docview{overflow:hidden}
   body.docview #sheet{display:block;position:fixed;inset:0;z-index:75;overflow:auto;background:#525c6e;padding:14px 0 96px;-webkit-overflow-scrolling:touch;color:#18212f;font:10.5pt/1.35 var(--f-body)}
   body.docview #sheet .doc-page{width:210mm;margin:0 auto;background:#fff;box-shadow:0 8px 28px #0007}
+  body.docview #sheet .doc-page.doc-a4l{width:297mm}body.docview #sheet .doc-a4l .doc-inner{padding:6mm}
   body.docview #sheet .doc-inner{background:#fff}
   #docbar{position:fixed;left:0;right:0;bottom:0;z-index:76;display:flex;gap:8px;justify-content:center;padding:12px 12px calc(12px + env(safe-area-inset-bottom));background:#0f1733ee;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
   #docbar[hidden]{display:none}
@@ -2866,12 +2867,12 @@ let PDF_LIBS = null;
 const pdfLibs = () => PDF_LIBS || (PDF_LIBS = Promise.all([
   window.html2canvas ? 1 : loadJs('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'),
   window.jspdf ? 1 : loadJs('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js')]).catch(e => { PDF_LIBS = null; throw e; }));
-function docFit(){ const p = $('sheet').querySelector('.doc-page'); if (p) p.style.zoom = Math.min(1, (innerWidth - 16) / 794).toFixed(3); }
+function docFit(){ const p = $('sheet').querySelector('.doc-page'); if (p) p.style.zoom = Math.min(1, (innerWidth - 16) / (p.classList.contains('doc-a4l') ? 1123 : 794)).toFixed(3); }
 addEventListener('resize', () => { if (document.body.classList.contains('docview')) docFit(); });
 /* show the document now in #sheet on screen; kind: 'a5' (A5 landscape voucher), 'a4' (letterhead A4), 'a4pad' (plain A4 sheet) */
 async function docOut(name, kind){
   const sh = $('sheet'); await waitImages(sh);
-  const page = document.createElement('div'); page.className = 'doc-page' + (kind === 'a5' ? ' doc-a5' : '');
+  const page = document.createElement('div'); page.className = 'doc-page' + (kind === 'a5' ? ' doc-a5' : kind === 'a4l' ? ' doc-a4l' : '');
   const inner = document.createElement('div'); inner.className = 'doc-inner' + (kind === 'a4pad' ? ' doc-pad' : ''); page.appendChild(inner);
   [...sh.childNodes].filter(n => n.nodeName !== 'STYLE' && n !== page).forEach(n => inner.appendChild(n)); sh.appendChild(page);
   Object.assign(DOC, { name: String(name || 'Document').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim(), kind, pdf: null });
@@ -2882,15 +2883,16 @@ async function docOut(name, kind){
 }
 async function docMakePdf(){
   await pdfLibs(); await new Promise(r => setTimeout(r, 60));
-  const page = $('sheet').querySelector('.doc-page'), target = page.querySelector('.lh') || page.querySelector('.doc-inner') || page;
-  const canvas = await html2canvas(target, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false, windowWidth: 1100,
+  const page = $('sheet').querySelector('.doc-page'), target = page.querySelector('.lh') || page.querySelector('.wp') || page.querySelector('.doc-inner') || page;
+  const land = DOC.kind === 'a4l';
+  const canvas = await html2canvas(target, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false, windowWidth: land ? 1500 : 1100,
     onclone: d => { d.body.classList.add('docshot'); const p = d.querySelector('#sheet .doc-page'); if (p) p.style.zoom = 1; } });
-  const a5 = DOC.kind === 'a5', W = 210, H = a5 ? 148 : 297, pxmm = canvas.width / W, pageH = Math.round(H * pxmm);
-  const pdf = new window.jspdf.jsPDF({ orientation: a5 ? 'landscape' : 'portrait', unit: 'mm', format: a5 ? 'a5' : 'a4', compress: true });
+  const a5 = DOC.kind === 'a5', W = land ? 297 : 210, H = a5 ? 148 : land ? 210 : 297, M = land ? 6 : 0, pxmm = canvas.width / (W - 2 * M), pageH = Math.round((H - 2 * M) * pxmm);
+  const pdf = new window.jspdf.jsPDF({ orientation: a5 || land ? 'landscape' : 'portrait', unit: 'mm', format: a5 ? 'a5' : 'a4', compress: true });
   for (let y = 0, i = 0; y < canvas.height - 3 * pxmm; y += pageH, i++) {
     const h = Math.min(pageH, canvas.height - y), c = document.createElement('canvas'); c.width = canvas.width; c.height = h;
     const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, h); g.drawImage(canvas, 0, y, canvas.width, h, 0, 0, canvas.width, h);
-    if (i) pdf.addPage(); pdf.addImage(c.toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, W, h / pxmm);
+    if (i) pdf.addPage(); pdf.addImage(c.toDataURL('image/jpeg', 0.92), 'JPEG', M, M, W - 2 * M, h / pxmm);
   }
   const fname = DOC.name.replace(/[\\/:*?"<>|]+/g, '-').slice(0, 80) + '.pdf';
   return new File([pdf.output('blob')], fname, { type: 'application/pdf' });
@@ -3004,19 +3006,19 @@ async function xOpenDsr(site, id){
 }
 /* programme from the project details: start date + months -> the 20 villa activities. Re-fitting keeps names, weights, % done and own activities. */
 function xSchRefit(old, start, months){
-  const n = xSchFromTemplate(start, months); if (!old) return n;
+  const n = xSchFromTemplate(start, months, X.sf && X.sf.code ? String(X.sf.code).toUpperCase() : ''); if (!old) return n;
   const byId = {}; old.items.forEach(it => { byId[it.id] = it; });
   n.items = n.items.filter(it => byId[it.id]).map(it => Object.assign(it, { name: byId[it.id].name, w: byId[it.id].w, pct: byId[it.id].pct }));
-  const own = old.items.filter(it => !/^a([1-9]|1\d|20)$/.test(it.id));   // activities you added yourself stay where they are
+  const own = old.items.filter(it => !XWP_ID.test(it.id));   // activities you added yourself stay where they are
   n.items = n.items.concat(own).sort((p, q) => p.start.localeCompare(q.start)); n.hist = old.hist || [];
   return n;
 }
 function xSitePHint(){
   const el = $('xs-phint'), f = X.sf; if (!el || !f) return;
   const sc = f.code ? xSch(String(f.code).toUpperCase()) : null, st = f.pstart, mo = +f.pmonths;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(st || '') || !(mo > 0)) { el.textContent = sc ? 'Programme ' + dmy(xSchStats(sc).start) + ' → ' + dmy(xSchStats(sc).finish) + '.' : 'Enter the start date and months – the 20 activities are made when you save.'; return; }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(st || '') || !(mo > 0)) { el.textContent = sc ? 'Programme ' + dmy(xSchStats(sc).start) + ' → ' + dmy(xSchStats(sc).finish) + '.' : 'Enter the start date and months – the activities are made when you save.'; return; }
   const fin = dmy(xAddDays(st, xMonthsDays(st, mo) - 1)), same = sc && sc.start === st && +sc.months === mo;
-  el.textContent = 'Finishes ' + fin + '. ' + (!sc ? 'Saving creates the programme (20 activities).' : same ? 'No change to the programme.' : 'Saving re-fits the activity dates to this period – % done is kept.');
+  el.textContent = 'Finishes ' + fin + '. ' + (!sc ? 'Saving creates the programme (standard villa work programme, up to 41 activities).' : same ? 'No change to the programme.' : 'Saving re-fits the activity dates to this period – % done is kept.');
 }
 function xSiteForm(code){
   const s = code ? Object.assign({}, xSite(code)) : { code: '', status: 'Active' }, ro = !xIsAdmin();
@@ -3744,14 +3746,55 @@ function xProjMoney(code){
 }
 
 /* =================== PROGRESS + GANTT (programme per project) =================== */
-/* standard G+1 villa: [name, weight %, start day, duration days] – about 9 months, weights add up to 100 */
-const XVILLA = [
-  ['Mobilization & site setup', 1, 0, 7], ['Excavation & backfilling', 2, 7, 14], ['Foundations (PCC, footings, neck columns)', 6, 21, 21],
-  ['Plinth beams & ground slab', 5, 42, 14], ['Ground floor columns', 4, 56, 14], ['First floor slab', 8, 70, 21], ['First floor columns', 4, 91, 14],
-  ['Roof slab', 7, 105, 21], ['Block work', 8, 100, 45], ['Plumbing & drainage – 1st fix', 4, 110, 30], ['Electrical – 1st fix', 4, 110, 30],
-  ['Plaster (internal & external)', 8, 140, 45], ['Waterproofing & roof insulation', 3, 130, 14], ['AC ducting & HVAC', 5, 150, 30],
-  ['Flooring & tiling', 8, 185, 40], ['Doors & windows', 5, 190, 30], ['Painting', 6, 215, 30], ['MEP 2nd fix & fixtures', 4, 230, 21],
-  ['External works (boundary wall, interlock, landscape)', 5, 200, 40], ['Testing, snagging & handover', 3, 250, 14]];
+/* standard villa work programme (from the Al Tarwi tender work schedule, 72 weeks):
+   [phase, activity, start week, duration weeks, weight, part]  part: '' = villa, 'SB' = service block, 'BW' = boundary wall */
+const XWP = [
+  ['Preliminaries', 'Mobilization, hoarding, sign boards, setting-out, submittals & approvals', 1, 3, 1],
+  ['Substructure', 'Excavation, road base & anti-termite (1st stage)', 3, 3, 2],
+  ['Substructure', 'Polythene, PCC blinding, RC footings & neck columns', 5, 5, 6],
+  ['Substructure', 'Tie beams, solid block, bitumen, backfill & slab on grade', 9, 5, 4],
+  ['Service Block', 'Service block substructure (excavation to slab on grade)', 9, 5, 1.5, 'SB'],
+  ['Superstructure', 'Ground floor columns & core walls', 13, 4, 3],
+  ['Superstructure', 'First floor slab & drop beams', 16, 6, 7],
+  ['Service Block', 'Service block columns, roof slab, parapet & lintels', 14, 5, 1.5, 'SB'],
+  ['Superstructure', 'Main RC staircase', 19, 3, 1],
+  ['Superstructure', 'First floor columns & core walls', 22, 4, 3],
+  ['Superstructure', 'Roof slab & beams', 25, 6, 7],
+  ['Superstructure', 'Parapets, lintels, sun-breakers & roof plinths', 30, 4, 2],
+  ['Block Work', 'Ground floor block work (external thermal + internal)', 21, 6, 4],
+  ['Block Work', 'First floor block work', 31, 6, 3],
+  ['Service Block', 'Service block block work, plaster & paint', 20, 8, 1.5, 'SB'],
+  ['Boundary Wall', 'Boundary wall foundations, columns, tie beams & block work', 16, 10, 3, 'BW'],
+  ['Outside Works', 'Holding tank, manholes, gully traps & tank base', 26, 7, 2],
+  ['MEP - First Fix', 'Electrical, Etisalat & ELV conduits (slabs and walls)', 17, 22, 3],
+  ['MEP - First Fix', 'Plumbing, drainage & rain water first fix', 22, 18, 3],
+  ['MEP - First Fix', "AC builder's works: sleeves, drains, isolators", 34, 14, 2],
+  ['Waterproofing', 'Roof combo system & terrace waterproofing (flood test)', 37, 4, 2],
+  ['Plaster', 'Internal plaster', 35, 10, 4],
+  ['Plaster', 'External plaster', 38, 8, 3],
+  ['Boundary Wall', 'Boundary wall plaster, paint, panels & lights', 40, 6, 2, 'BW'],
+  ['Aluminium', 'Aluminium windows – shop drawings, fabrication & installation', 40, 10, 5],
+  ['Waterproofing', 'Wet-area waterproofing (baths, kitchen, laundry)', 45, 3, 1],
+  ['Ceiling Finish', 'Ceiling finish / false ceiling to wet areas', 47, 5, 1],
+  ['Ceramic & Marble', 'Floor & wall tiles', 47, 10, 6],
+  ['Ceramic & Marble', 'Staircase marble, granite steps, thresholds & outdoor porcelain', 55, 6, 2],
+  ['Paint', 'External paint', 50, 6, 2],
+  ['Aluminium', 'Staircase handrail / balustrade', 55, 4, 1],
+  ['Wood Works', 'Doors installation', 57, 5, 3],
+  ['Paint', 'Internal paint', 58, 6, 2],
+  ['Bath Fittings', 'Sanitary sets, wash counter & kitchen sink', 61, 4, 2],
+  ['MEP - Second Fix', 'Electrical second fix, DBs, CT meter, exhaust fans', 60, 7, 2],
+  ['MEP - Second Fix', 'Water heaters, tanks, pumps & plumbing fixtures', 62, 5, 2],
+  ['Boundary Wall', 'Main sliding gate & pedestrian gate', 60, 5, 2, 'BW'],
+  ['Testing & Handover', 'Testing & commissioning; EtihadWE, Etisalat & Civil Defense inspections', 65, 5, 1],
+  ['Testing & Handover', 'Snagging & de-snagging', 68, 3, 0.5],
+  ['Testing & Handover', 'Final cleaning', 70, 2, 0.5],
+  ['Testing & Handover', 'Consultant inspection, completion certificate & handover', 71, 2, 0.5]];
+const XPH_COL = { 'Preliminaries': '#7f7f7f', 'Substructure': '#4d4d4d', 'Superstructure': '#a6a6a6', 'Service Block': '#8eaadb', 'Block Work': '#bf9000',
+  'Boundary Wall': '#375623', 'Outside Works': '#9c6500', 'MEP - First Fix': '#2e75b6', 'Waterproofing': '#1ea0d8', 'Plaster': '#8497b0', 'Aluminium': '#ffc000',
+  'Ceiling Finish': '#a9d18e', 'Ceramic & Marble': '#7030a0', 'Paint': '#c55a11', 'Wood Works': '#d9a441', 'Bath Fittings': '#e06666', 'MEP - Second Fix': '#1f4e79', 'Testing & Handover': '#c00000' };
+const xPhCol = ph => XPH_COL[ph] || '#5b8bd6';
+const XWP_ID = /^w([1-9]|[1-3]\d|4[01])$/;          // ids of the standard activities (w1…w41); anything else was added by hand
 const xSch = code => (X.d.schedules || {})[code] || null;
 const xActEnd = it => xAddDays(it.start, it.dur - 1);
 function xSchStats(s, date){
@@ -3768,12 +3811,21 @@ function xMonthsDays(start, months){
   const e = new Date(start + 'T12:00'); e.setMonth(e.getMonth() + Math.floor(m));
   return xDaysBetween(start, e.toISOString().slice(0, 10)) + Math.round((m % 1) * 30);
 }
-/* the villa template stretched / squeezed to the contract period: every activity keeps its place and share of the time */
-function xSchFromTemplate(start, months){
-  const span = Math.max(...XVILLA.map(a => a[2] + a[3])), T = Math.max(20, xMonthsDays(start, months) || span), f = T / span;
-  return { start, months: +months > 0 ? +months : '', hist: [],
-    items: XVILLA.map(([name, w, s, dur], i) => { const b = Math.round(s * f), e = Math.round((s + dur) * f);
-      return { id: 'a' + (i + 1), name, w, start: xAddDays(start, b) || start, dur: Math.max(1, e - b), pct: 0 }; }) };
+/* which parts of the standard programme a project has: service block / boundary wall rows only when the project mentions them */
+function xWpParts(code){
+  const p = String((xSite(code) || {}).project || '').toLowerCase();
+  if (!p.trim()) return { SB: true, BW: true };
+  return { SB: /service/.test(p), BW: /boundary|compound wall/.test(p) };
+}
+/* the standard programme stretched / squeezed to the contract period: every activity keeps its place and share of the time; weights re-scaled to 100% */
+function xSchFromTemplate(start, months, code){
+  const parts = code ? xWpParts(code) : { SB: true, BW: true }, rows = XWP.map((r, i) => ({ r, i })).filter(x => !x.r[5] || parts[x.r[5]]);
+  const span = 72 * 7, T = Math.max(20, xMonthsDays(start, months) || span), f = T / span, W = rows.reduce((a, x) => a + x.r[4], 0);
+  let left = 100;
+  const items = rows.map(({ r: [ph, name, sw, dw, w], i }, k) => { const b = Math.round((sw - 1) * 7 * f), e = Math.round((sw - 1 + dw) * 7 * f);
+    const wt = k === rows.length - 1 ? Math.round(left * 10) / 10 : Math.round(w / W * 1000) / 10; left -= wt;
+    return { id: 'w' + (i + 1), ph, name, w: wt, start: xAddDays(start, b) || start, dur: Math.max(1, e - b), pct: 0 }; });
+  return { start, months: +months > 0 ? +months : '', hist: [], items };
 }
 async function xSchSave(code, s, msg){
   const st = xSchStats(s), hist = (s.hist || []).filter(h => h.d !== today()); hist.push({ d: today(), a: st.actual });
@@ -3807,22 +3859,25 @@ function xGantt(s, opt = {}){
     ${months.map(m => { const mx = Math.max(LW, x(m)); return `<line x1="${mx}" x2="${mx}" y1="${top - 6}" y2="${H}" stroke="#e3e9f2"/><text x="${mx + 3}" y="${top - 12}" font-size="10" fill="#6b7a90">${new Date(m + 'T12:00').toLocaleString('en-GB', { month: 'short', year: '2-digit' })}</text>`; }).join('')}
     ${s.items.map((it, i) => { const y0 = top + i * rowH, x1 = x(it.start), x2 = x(xAddDays(it.end || xActEnd(it), 1)), w = Math.max(3, x2 - x1), late = +it.pct < 100 && xActEnd(it) < td;
       const behind = !late && xSchStats({ items: [it] }, td).plan > +it.pct + 0.1;
+      const col = it.ph ? xPhCol(it.ph) : '#1D7FD1';      // phase colour (as on the printed work programme)
       return `<rect x="0" y="${y0}" width="${W}" height="${rowH}" fill="${i % 2 ? '#f7f9fc' : '#fff'}"/>
-        <text x="6" y="${y0 + 16}" font-size="11" fill="${late ? '#c0392b' : '#1f2a3a'}">${esc(it.name.length > (opt.print ? 38 : 30) ? it.name.slice(0, opt.print ? 37 : 29) + '…' : it.name)}</text>
-        <rect x="${x1}" y="${y0 + 5}" width="${w}" height="${rowH - 10}" rx="3" fill="${late ? '#f6c9c4' : behind ? '#fde3b5' : '#cfe2f7'}"/>
-        <rect x="${x1}" y="${y0 + 5}" width="${w * Math.min(100, +it.pct) / 100}" height="${rowH - 10}" rx="3" fill="${late ? '#c0392b' : +it.pct >= 100 ? '#17734a' : '#1D7FD1'}"/>
+        <rect x="4" y="${y0 + 7}" width="6" height="10" rx="1.5" fill="${col}"/>
+        <text x="14" y="${y0 + 16}" font-size="11" fill="${late ? '#c0392b' : '#1f2a3a'}">${esc(it.name.length > (opt.print ? 36 : 28) ? it.name.slice(0, opt.print ? 35 : 27) + '…' : it.name)}</text>
+        <rect x="${x1}" y="${y0 + 5}" width="${w}" height="${rowH - 10}" rx="3" fill="${col}" fill-opacity="0.5" ${late ? 'stroke="#c0392b" stroke-width="2"' : behind ? 'stroke="#e08a00" stroke-width="1.6"' : ''}/>
+        <rect x="${x1}" y="${y0 + 5}" width="${w * Math.min(100, +it.pct) / 100}" height="${rowH - 10}" rx="3" fill="${col}"/>
         <text x="${Math.min(x1 + w + 4, W - 30)}" y="${y0 + 16}" font-size="10" fill="#4a5a70">${+it.pct}%</text>
         ${opt.print ? '' : `<rect x="0" y="${y0}" width="${W}" height="${rowH}" fill="transparent" data-xact="${i}" style="cursor:pointer"><title>Change ${esc(it.name)}</title></rect>`}`; }).join('')}
     ${td >= st.start && td <= xAddDays(st.start, days) ? `<line x1="${x(td)}" x2="${x(td)}" y1="${top - 6}" y2="${H}" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="4 3"/>` : ''}
-  </svg></div>`;
+  </svg></div>${xPhLegend(s)}`;
 }
+const xPhLegend = s => { const ph = [...new Set(s.items.map(it => it.ph).filter(Boolean))]; return ph.length ? `<div style="display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:6px;font-size:11px;color:#4a5a70">${ph.map(p => `<span style="display:inline-flex;align-items:center;gap:4px"><i style="width:10px;height:10px;border-radius:2px;background:${xPhCol(p)};display:inline-block"></i>${esc(p)}</span>`).join('')}</div>` : ''; };
 /* create programmes for many projects at once: start date + months per project */
 function xSchAll(){
   X.view = 'schall';
   const act = X.d.sites.filter(s => s.status !== 'Completed').sort((a, b) => a.code.localeCompare(b.code));
   const todo = act.filter(s => !xSch(s.code)), done = act.filter(s => xSch(s.code));
   xMain().innerHTML = `<div class="card"><div class="body"><b>Create programmes</b>
-      <p class="hint" style="margin-bottom:0">For each project give the start date of the works and the contract period in months. The standard villa programme (20 activities) is fitted to that period. Projects that already have a programme are not changed.</p></div></div>
+      <p class="hint" style="margin-bottom:0">For each project give the start date of the works and the contract period in months. The standard villa work programme (up to 41 activities in phases; service block and boundary wall rows only when the project has them) is fitted to that period. Projects that already have a programme are not changed.</p></div></div>
     ${todo.length ? `<div class="x-list">${todo.map(s => `<div class="x-it" data-xsa="${esc(s.code)}" style="cursor:default;display:block">
         <label style="display:flex;gap:10px;align-items:center;margin:0"><input type="checkbox" checked style="width:auto"><span class="t"><b>${esc(s.code)}${s.client ? ' · ' + esc(s.client) : ''}</b><small>${esc([s.project, s.plot ? 'Plot ' + s.plot : ''].filter(Boolean).join(' · ') || '')}</small></span></label>
         <div class="x-two" style="margin-top:8px"><div><label>Start date</label><input type="date" value="${today()}"></div><div><label>Duration (months)</label><input type="number" min="1" max="60" step="0.5" inputmode="decimal" placeholder="e.g. 12"></div></div>
@@ -3838,10 +3893,10 @@ function xSchAll(){
 function xProjProgress(code){
   const s = xSch(code);
   if (!s) return `<div class="card"><div class="body"><b>No programme yet for this project</b>
-      <p class="hint">Give the start date and the contract period. The standard villa programme (20 activities, weights add up to 100%) is fitted to that period. You can change every activity afterwards.</p>
+      <p class="hint">Give the start date and the contract period. The standard villa work programme (up to 41 activities in phases, weights add up to 100%) is fitted to that period. You can change every activity afterwards.</p>
       <div class="x-two"><div><label for="xs-start">Start date of the works</label><input type="date" id="xs-start" value="${today()}"></div>
         <div><label for="xs-months">Duration (months)</label><input id="xs-months" type="number" min="1" max="60" step="0.5" inputmode="decimal" placeholder="e.g. 12"></div></div>
-      <button class="btn ok" data-xschnew="${esc(code)}" style="margin-top:10px;width:100%">Create programme from the villa template</button></div></div>`;
+      <button class="btn ok" data-xschnew="${esc(code)}" style="margin-top:10px;width:100%">Create the work programme</button></div></div>`;
   const st = xSchStats(s), dr = X.schDraft && X.schDraft.code === code ? X.schDraft.s : s, dst = xSchStats(dr);
   const status = st.diff >= 0 ? `On / ahead of schedule (+${st.diff}%)` : `Behind schedule by ${-st.diff}%`;
   return `<div class="x-bal${st.diff < -5 ? ' neg' : ''}"><small>WORK DONE · ${esc(status.toUpperCase())}</small><b>${dst.actual}<span>%</span></b>
@@ -3859,13 +3914,14 @@ function xProjProgress(code){
 /* Schedule (Gantt) tab */
 function xProjGantt(code){
   const s = xSch(code);
-  if (!s) return `<div class="empty">No programme yet – open the <b>Progress</b> tab to create it from the villa template.</div>`;
+  if (!s) return `<div class="empty">No programme yet – open the <b>Progress</b> tab or the project <b>Details</b> to create it from a start date and months.</div>`;
   const st = xSchStats(s);
   return `<div class="x-stats"><div><b>${dmy(st.start)}</b><small>Start</small></div><div><b>${dmy(st.finish)}</b><small>Finish</small></div><div><b class="${st.late.length ? 'neg' : ''}">${st.late.length}</b><small>Late</small></div></div>
-    <p class="hint" style="margin:8px 0">Blue = planned, dark = done, orange = behind, red = late, dashed red line = today. Tap any activity (on the chart or in the list) to change its dates.</p>
+    <p class="hint" style="margin:8px 0">Colour = phase. Light = planned, solid = done, orange edge = behind, red edge = late, dashed red line = today. Tap any activity (on the chart or in the list) to change it.</p>
     ${xGantt(s)}
-    <div class="x-list" style="margin-top:10px">${s.items.map((it, i) => `<button class="x-it" data-xact="${i}"><span class="ic ${+it.pct >= 100 ? 'in' : ''}">${+it.pct}</span>
-      <span class="t"><b>${esc(it.name)}</b><small>${dmy(it.start)} → ${dmy(xActEnd(it))} · ${it.dur} days · weight ${it.w}%</small></span></button>`).join('')}</div>
+    <button class="btn" data-xwpprint="${esc(code)}" style="width:100%;margin-top:10px">Print work programme (A4 landscape · WhatsApp)</button>
+    <div class="x-list" style="margin-top:10px">${s.items.map((it, i) => `<button class="x-it" data-xact="${i}"><span class="ic" style="background:${it.ph ? xPhCol(it.ph) : ''}">${+it.pct}</span>
+      <span class="t"><b>${esc(it.name)}</b><small>${it.ph ? esc(it.ph) + ' · ' : ''}${dmy(it.start)} → ${dmy(xActEnd(it))} · ${it.dur} days · weight ${it.w}%</small></span></button>`).join('')}</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn sec" data-xact="new">+ Activity</button><button class="btn sec" data-xschshift="${esc(code)}">Move whole programme</button></div>`;
 }
 /* activity form: Start / Finish / Duration kept in step; later activities = those starting after this one's original finish */
@@ -3889,6 +3945,8 @@ function xActForm(code, i){
   X.actf = { code, i, s, it, orig: isNew ? null : { start: it.start, dur: +it.dur }, shift: !isNew }; X.view = 'actf';
   xMain().innerHTML = `<div class="x-form"><div class="card"><h2>${isNew ? 'NEW ACTIVITY' : 'ACTIVITY'}</h2><div class="body">
       <div><label>Activity</label><input data-xaf="name" value="${esc(it.name)}"></div>
+      <div><label for="xaf-ph">Phase (colour on the chart)</label><input id="xaf-ph" data-xaf="ph" list="xph-list" value="${esc(it.ph || '')}" placeholder="e.g. Superstructure">
+        <datalist id="xph-list">${Object.keys(XPH_COL).map(p => `<option value="${esc(p)}">`).join('')}</datalist></div>
       <div class="x-two"><div><label for="xaf-start">Start</label><input type="date" id="xaf-start" data-xaf="start" value="${esc(it.start)}"></div><div><label for="xaf-fin">Finish</label><input type="date" id="xaf-fin" data-xaf="end" value="${esc(xActEnd(it))}"></div></div>
       <div><label for="xaf-dur">Duration (days)</label><div style="display:flex;gap:8px;align-items:center">
         <button type="button" class="btn sec" data-xafstep="-7" aria-label="7 days less">−7</button><button type="button" class="btn sec" data-xafstep="-1" aria-label="1 day less">−1</button>
@@ -3904,6 +3962,55 @@ function xActForm(code, i){
   $('exp').scrollTop = 0; xAfInfo();
 }
 /* printable progress report (A4) */
+/* printed WORK PROGRAMME – same layout as the Al Tarwi tender work schedule: phases in colour, week grid under month headings (A4 landscape) */
+async function xWpPrint(code){
+  const s = xSch(code); if (!s) return; const si = xSite(code) || {}, st = xSchStats(s), start = s.start && s.start <= st.start ? s.start : st.start;
+  const wk = d => Math.floor(xDaysBetween(start, d) / 7) + 1, weeks = Math.max(1, wk(st.finish)), unit = weeks > 84 ? 2 : 1, cols = Math.ceil(weeks / unit);
+  const months = +s.months > 0 ? +s.months : Math.round(weeks / 4.345 * 2) / 2, items = s.items, n = items.length, showPct = items.some(it => +it.pct > 0);
+  const logo = await lhLogo(), rowH = Math.max(3.1, Math.min(4.8, 158 / Math.max(n, 1))).toFixed(2);
+  const fixedW = 6 + 23 + 58 + 8 + 7 + 8 + (showPct ? 8 : 0), colW = ((285 - fixedW) / cols).toFixed(3);
+  // month headings: consecutive grid columns that start in the same calendar month
+  const grp = []; for (let c = 0; c < cols; c++) { const d = xAddDays(start, c * unit * 7), k = d.slice(0, 7); const g = grp[grp.length - 1];
+    if (g && g.k === k) g.n++; else grp.push({ k, n: 1, d }); }
+  const tw = wk(today()), tc = tw >= 1 && tw <= weeks ? Math.floor((tw - 1) / unit) : -1;
+  const ph = [...new Set(items.map(it => it.ph).filter(Boolean))], rev = xr2(si.contract) + xr2(si.variations);
+  const title = `${months}-MONTH CONSTRUCTION WORK PROGRAM — ${esc(String(si.project || code).toUpperCase())}`;
+  const line1 = [si.client ? 'Client: ' + esc(si.client) : '', si.consultant ? 'Consultant: ' + esc(si.consultant) : '', 'Contractor: Al Tarwi Building Contracting', si.location ? 'Location: ' + esc(si.location) : '', si.plot ? 'Plot No.: ' + esc(si.plot) : ''].filter(Boolean).join('  |  ');
+  const line2 = [`Contract duration: ${months} months (${weeks} weeks) from ${dmy(start)} to ${dmy(st.finish)}`, rev ? `Contract value: AED ${aed(rev)} excluding VAT` : '', 'Project ' + esc(code)].filter(Boolean).join('  |  ');
+  $('sheet').innerHTML = `<style>
+    @page{size:A4 landscape;margin:6mm}
+    #sheet .wp{width:285mm;font:6.2pt/1.15 Arial,'Segoe UI',sans-serif;color:#18212f;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    #sheet .wp-band{display:flex;align-items:center;gap:4mm;background:#1f4e79;color:#fff;padding:2.2mm 4mm;border-radius:1mm}
+    #sheet .wp-logo{background:#fff;border-radius:1.2mm;padding:1mm 1.6mm;display:flex;align-items:center;gap:1.6mm;flex:none}
+    #sheet .wp-logo img{height:9mm;width:auto}#sheet .wp-logo b{color:#1F2A6B;font:800 7pt Arial;line-height:1.1}#sheet .wp-logo b span{display:block;color:#1D7FD1;font-weight:700}
+    #sheet .wp-tt{flex:1;text-align:center}#sheet .wp-tt b{display:block;font:800 10.5pt Arial;letter-spacing:.02em;margin-bottom:.8mm}
+    #sheet .wp-tt div{font-size:6.6pt;opacity:.95}#sheet .wp-tt div+div{font-style:italic}
+    #sheet table.wp-t{width:285mm;border-collapse:collapse;table-layout:fixed;margin-top:1.6mm}
+    #sheet .wp-t th,#sheet .wp-t td{border:.2mm solid #b8c4d6;padding:0 .8mm;height:${rowH}mm;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;vertical-align:middle}
+    #sheet .wp-t thead th{background:#bdd7ee;color:#1f3b5b;font-weight:700;text-align:center;height:3.6mm;font-size:5.8pt;white-space:normal;line-height:1.05;text-overflow:clip}
+    #sheet .wp-t thead tr.wk th{font-size:4.4pt;font-weight:400;padding:0;height:2.8mm}
+    #sheet .wp-t td.c{text-align:center}#sheet .wp-t td.g{padding:0;border-color:#d5dde9}
+    #sheet .wp-t td.tc,#sheet .wp-t th.tc{box-shadow:inset .5mm 0 0 #c00000}
+    #sheet .wp-leg{display:flex;flex-wrap:wrap;gap:1mm 4mm;align-items:center;margin-top:2mm;font-size:5.8pt}
+    #sheet .wp-leg i{display:inline-block;width:4mm;height:2.6mm;margin-right:1mm;vertical-align:middle;border:.15mm solid #0003}
+    #sheet .wp-note{margin-top:1.4mm;font-size:5.4pt;color:#5d6a7e;font-style:italic}
+  </style>
+  <div class="wp">
+    <div class="wp-band"><div class="wp-logo"><img src="${logo || LOGO}" alt=""><b>AL TARWI<span>BUILDING CONTRACTING</span></b></div>
+      <div class="wp-tt"><b>${title}</b><div>${line1}</div><div>${line2}</div></div></div>
+    <table class="wp-t"><colgroup><col style="width:6mm"><col style="width:23mm"><col style="width:58mm"><col style="width:8mm"><col style="width:7mm"><col style="width:8mm">${showPct ? '<col style="width:8mm">' : ''}${`<col style="width:${colW}mm">`.repeat(cols)}</colgroup>
+      <thead><tr><th rowspan="2">No.</th><th rowspan="2">Phase</th><th rowspan="2">Activity Description</th><th rowspan="2">Start Wk</th><th rowspan="2">Dur (wk)</th><th rowspan="2">End Wk</th>${showPct ? '<th rowspan="2">Done</th>' : ''}
+        ${grp.map((g, k) => `<th colspan="${g.n}" title="${g.k}">${g.n * colW >= 7 ? 'Month ' + (k + 1) : k + 1}${g.n * colW >= 14 ? ' · ' + new Date(g.d + 'T12:00').toLocaleString('en-GB', { month: 'short', year: '2-digit' }) : ''}</th>`).join('')}</tr>
+        <tr class="wk">${Array.from({ length: cols }, (_, c) => `<th class="${c === tc ? 'tc' : ''}">${unit === 1 ? c + 1 : c * 2 + 1}</th>`).join('')}</tr></thead>
+      <tbody>${items.map((it, i) => { const sw = wk(it.start), ew = wk(xActEnd(it)), col = it.ph ? xPhCol(it.ph) : '#5b8bd6';
+        return `<tr><td class="c">${i + 1}</td><td>${esc(it.ph || '')}</td><td>${esc(it.name)}</td><td class="c">${sw}</td><td class="c">${ew - sw + 1}</td><td class="c">${ew}</td>${showPct ? `<td class="c">${+it.pct}%</td>` : ''}
+          ${Array.from({ length: cols }, (_, c) => { const a = c * unit + 1, b = a + unit - 1, on = sw <= b && ew >= a;
+            return `<td class="g${c === tc ? ' tc' : ''}"${on ? ` style="background:${col}"` : ''}></td>`; }).join('')}</tr>`; }).join('')}</tbody></table>
+    ${ph.length ? `<div class="wp-leg"><b style="margin-right:2mm">Phase legend:</b>${ph.map(p => `<span><i style="background:${xPhCol(p)}"></i>${esc(p)}</span>`).join('')}</div>` : ''}
+    <div class="wp-note">Bars show planned working weeks per activity. Week 1 starts on ${dmy(start)} (site commencement / handover).${unit > 1 ? ' Each grid column = 2 weeks.' : ''}${tc >= 0 ? ' Red line = this week (week ' + tw + ').' : ''} Overlaps reflect standard construction sequencing. Printed ${dmy(today())}.</div>
+  </div>`;
+  docOut('Work Programme ' + code, 'a4l');
+}
 function xSchPrint(code){
   const s = xSch(code); if (!s) return; const st = xSchStats(s), si = xSite(code);
   lhPrint('PROGRESS REPORT', [['Project', esc(code)], ['Date', dmy(today())], ['Work done', st.actual + '%']],
@@ -4587,7 +4694,7 @@ $('exp').addEventListener('click', async e => {
   if (D.xschnew) { const code = D.xschnew, st = ($('xs-start') || {}).value || today(), mo = +($('xs-months') || {}).value || 0;
     if (!(mo > 0)) return toast('Enter the duration in months');
     b.disabled = true;
-    try { const s = xSchFromTemplate(st, mo); await xSchSave(code, s, `Programme created – ${mo} months, finishes ${dmy(xSchStats(s).finish)}`); X.projTab = 'gantt'; xSitePage(code); } catch (er) { toast(errText(er)); b.disabled = false; } return; }
+    try { const s = xSchFromTemplate(st, mo, code); await xSchSave(code, s, `Programme created – ${mo} months, finishes ${dmy(xSchStats(s).finish)}`); X.projTab = 'gantt'; xSitePage(code); } catch (er) { toast(errText(er)); b.disabled = false; } return; }
   if ('xschall' in D) return xSchAll();
   if (b.id === 'xsa-save') {
     const rows = [...document.querySelectorAll('[data-xsa]')].filter(r => r.querySelector('input[type=checkbox]').checked)
@@ -4596,13 +4703,14 @@ $('exp').addEventListener('click', async e => {
     if (!rows.length) return $('xsa-err').textContent = 'Tick at least one project.';
     if (bad) return $('xsa-err').textContent = bad.site + ': enter the start date and the months.';
     b.disabled = true; b.textContent = 'Creating…';
-    try { X.d = await server('expSaveSchedules', rows.map(r => ({ site: r.site, data: xSchFromTemplate(r.start, r.months) })), X.pin); keep('exp.cache', X.d);
+    try { X.d = await server('expSaveSchedules', rows.map(r => ({ site: r.site, data: xSchFromTemplate(r.start, r.months, r.site) })), X.pin); keep('exp.cache', X.d);
       toast(rows.length + ' programme' + (rows.length > 1 ? 's' : '') + ' created'); X.schAll = null; xGo('sites'); }
     catch (er) { $('xsa-err').textContent = errText(er); b.disabled = false; b.textContent = 'Create programmes'; }
     return; }
   if (D.xpgsave) { const code = D.xpgsave, s = X.schDraft && X.schDraft.code === code ? X.schDraft.s : xSch(code); b.disabled = true;
     try { await xSchSave(code, s, 'Progress saved – ' + xSchStats(s).actual + '% done'); X.schDraft = null; xSitePage(code); } catch (er) { toast(errText(er)); b.disabled = false; } return; }
   if (D.xschprint) return xSchPrint(D.xschprint);
+  if (D.xwpprint) return xWpPrint(D.xwpprint);
   if (D.xact != null && D.xact !== '') return xActForm(X.siteCode, D.xact);
   if (D.xafstep && X.actf) { const it = X.actf.it; it.dur = Math.max(1, (Math.round(+it.dur) || 1) + +D.xafstep); $('xaf-dur').value = it.dur; xAfInfo(); return; }
   if ('xactback' in D) { X.projTab = 'gantt'; return xSitePage(X.siteCode); }
