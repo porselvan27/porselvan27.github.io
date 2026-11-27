@@ -1975,7 +1975,7 @@ function xAppr(){
 const xBox = () => X.d.user.box || (X.d.boxes || [])[0] || '';
 function xRow(t){
   if (t.type === 'BILL') return `<button class="x-it${t.status === 'Cancelled' ? ' cx' : ''}" data-xopen="${esc(t.id)}"><span class="ic tr">BL</span>
-    <span class="t"><b>Bill – ${esc(t.party)}</b><small>${esc(t.voucher)} · ${esc(t.alloc)}${t.ref ? ' · their no. ' + esc(t.ref) : ''} · ${dmy(t.date)}</small><br><span class="x-st Pending">On credit</span>${t.status === 'Cancelled' ? ' <span class="x-st Cancelled">Cancelled</span>' : ''}</span>
+    <span class="t"><b>Bill – ${esc(t.party)}</b><small>${esc(t.voucher)} · ${esc((t.splits || []).length > 1 ? t.splits.map(x => x.site).join(' + ') : t.alloc)}${t.ref ? ' · their no. ' + esc(t.ref) : ''} · ${dmy(t.date)}</small><br><span class="x-st Pending">On credit</span>${t.status === 'Cancelled' ? ' <span class="x-st Cancelled">Cancelled</span>' : ''}</span>
     <span class="a">${aed(t.amount)}</span></button>`;
   const tr = t.type === 'TRANSFER' || t.type === 'BANK', rc = t.type === 'RECOVERY', cr = t.type === 'CLIENT RECEIPT', bk = t.type === 'BANK';
   const out = t.type === 'EXPENSE' || (t.type === 'TRANSFER' && t.box === xBox() && !xSeesAll()) || (bk && t.source === 'Bank charges');
@@ -1983,7 +1983,7 @@ function xRow(t){
   const st = String(t.status || '').split(' ')[0];
   const title = bk ? esc(t.source) + ' · ' + esc(t.bank) + (t.toBox ? ' → ' + esc(t.toBox) : '') : tr ? `Cash ${esc(t.box)} → ${esc(t.toBox)}` : rc ? `Advance recovered – ${esc(t.staff)}`
     : cr ? 'From ' + esc(t.party) : esc(t.item || t.cat || t.source || t.type);
-  const sub = bk ? esc(t.remarks || t.ref || (t.box ? 'from ' + t.box : '')) : tr || rc ? (rc ? esc(t.method) : esc(t.remarks || 'Cash handover')) : cr ? esc(t.alloc + ' · ' + t.method + (t.invNo ? ' · ' + t.invNo : '')) : esc(t.alloc || t.box || '');
+  const sub = bk ? esc(t.remarks || t.ref || (t.box ? 'from ' + t.box : '')) : tr || rc ? (rc ? esc(t.method) : esc(t.remarks || 'Cash handover')) : cr ? esc(t.alloc + ' · ' + t.method + (t.invNo ? ' · ' + t.invNo : '')) : (t.splits || []).length > 1 ? esc(t.splits.map(x => x.site).join(' + ')) : esc(t.alloc || t.box || '');
   return `<button class="x-it${t.status === 'Cancelled' ? ' cx' : ''}" data-xopen="${esc(t.id)}"><span class="ic ${t.type === 'EXPENSE' ? '' : tr ? 'tr' : 'in'}">${esc(ic)}</span>
     <span class="t"><b>${title}</b><small>${esc(t.voucher)} · ${sub} · ${dmy(t.date)}</small><br><span class="x-st ${esc(st)}">${esc(t.status)}</span>${t.reimb ? ' <span class="x-st Approved">Reimbursed</span>' : ''}</span>
     <span class="a ${out ? 'out' : tr ? '' : 'in'}">${tr && xSeesAll() && !out ? '' : out ? '−' : '+'}${aed(t.amount)}</span></button>`;
@@ -2366,6 +2366,8 @@ function xNew(type, old){
     X.f.party = X.f.party || xSite(X.f.alloc).client || ''; const inv = xOldestInv(X.f.alloc);
     X.f.invNo = inv ? inv.no : ''; if (inv && !xr2(X.f.amount)) X.f.amount = xr2(inv.total - xDocPaid(inv)).toFixed(2); }
   if (!X.f.lines) X.f.lines = [];
+  if (!X.f.splits) X.f.splits = [];
+  X.f.splitOn = X.f.splits.length > 1;
   X.preStaff = '';
   X.view = 'form'; xForm();
 }
@@ -2415,10 +2417,18 @@ function xForm(){
     <div><label for="xf-ref">Bank reference</label><input id="xf-ref" data-xi="ref" value="${esc(f.ref || '')}"></div>
     <p class="hint">${f.source === 'Cash deposit' ? 'Cash leaves the cash box above and goes into the bank.' : f.source === 'Bank charges' ? 'Charges, commission, cheque book fees – money out of the bank.' : f.source === 'Other income' ? 'Money into the bank that is not a client payment (refund, interest…).' : 'Moves money between your own accounts.'}</p>`
     : out || bl ? `
-    <div class="x-two"><div><label for="xf-alloc">Site / overhead</label><select id="xf-alloc" data-xi="alloc">${opt('', 'Choose…', f.alloc)}
+    <div class="x-two"><div><label for="xf-alloc">Site / overhead</label>${f.splitOn ? `<input value="${(f.splits || []).filter(x => x.site).length} sites – see split below" disabled>` : `<select id="xf-alloc" data-xi="alloc">${opt('', 'Choose…', f.alloc)}
         <optgroup label="Sites">${sites.map(x => opt(x.code, x.code + (x.client ? ' – ' + x.client.split(' ').slice(0, 2).join(' ') : ''), f.alloc)).join('')}</optgroup>
-        <optgroup label="Overheads">${s.overheads.map(o => opt(o, o, f.alloc)).join('')}</optgroup></select></div>
+        <optgroup label="Overheads">${s.overheads.map(o => opt(o, o, f.alloc)).join('')}</optgroup></select>`}</div>
       <div><label for="xf-cat">Category</label><select id="xf-cat" data-xi="cat">${opt('', 'Choose…', f.cat)}${d.cats.map(c => opt(c.name, c.name, f.cat)).join('')}</select></div></div>
+    <label class="x-tog"><input type="checkbox" data-xi="splitOn" ${f.splitOn ? 'checked' : ''}> One ${bl ? 'bill' : 'payment'} for more than one site – split it</label>
+    ${f.splitOn ? `<div class="x-lines" style="margin-top:-4px">
+      ${(f.splits || []).map((x, i) => `<div class="x-ln" style="grid-template-columns:1fr 120px 34px"><select data-xsp="${i}|site" aria-label="Site ${i + 1}">${opt('', 'Site…', x.site)}
+          <optgroup label="Sites">${sites.map(z => opt(z.code, z.code, x.site)).join('')}</optgroup><optgroup label="Overheads">${s.overheads.map(o => opt(o, o, x.site)).join('')}</optgroup></select>
+        <input data-xsp="${i}|amount" inputmode="decimal" placeholder="Amount" value="${esc(x.amount || '')}" aria-label="Amount for site ${i + 1}">
+        <button type="button" data-xspdel="${i}" aria-label="Remove site">×</button></div>`).join('')}
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn sec" data-xspadd>+ Site</button><button type="button" class="btn sec" data-xspeq>Split equally</button></div>
+      <div id="x-spsum" class="hint"></div></div>` : ''}
     <div><label for="xf-item">Item</label><input id="xf-item" data-xi="item" list="x-items" value="${esc(f.item || '')}" placeholder="e.g. Cement, JCB hire, Compaction test"></div>
     <div><label for="xf-pick">${bl ? 'Supplier / subcontractor' : 'Paid to'}</label>${xPartyPick(f.party)}
       <input id="xf-party" data-xi="party" list="x-parties" value="${esc(f.party || '')}" placeholder="${bl ? 'or type a new name' : 'or type a name (new supplier or a person)'}" style="margin-top:6px"></div>
@@ -2461,7 +2471,12 @@ function xForm(){
    ${out || bl ? '<div id="x-dn" style="margin-bottom:10px"></div>' : ''}<div id="x-next"></div>
    <p class="x-ferr" id="x-ferr"></p></div>
    <div class="x-save"><div><button class="btn sec" data-xback>Cancel</button><button class="btn ok" id="x-savebtn">${f.id ? 'Save changes' : bl ? 'Save bill' : out ? 'Save expense' : tr ? 'Send handover' : rc ? 'Save recovery' : cr ? 'Save receipt' : bk ? 'Save bank entry' : 'Save cash received'}</button></div></div>`;
-  xRc(); xLive(); xLineSum();
+  xRc(); xLive(); xLineSum(); xSplitSum();
+}
+function xSplitSum(){
+  const el = $('x-spsum'), f = X.f; if (!el || !f || !f.splitOn) return;
+  const amt = xr2(f.amount), sum = xr2((f.splits || []).reduce((a, x) => a + xr2(x.amount), 0)), left = xr2(amt - sum);
+  el.innerHTML = `Split total <b>${aed(sum)}</b> of ${aed(amt)} · ${Math.abs(left) < 0.01 ? '<b style="color:var(--ok)">matches ✓</b>' : `<b style="color:var(--danger)">${left > 0 ? 'still to split ' + aed(left) : 'too much by ' + aed(-left)}</b>`}`;
 }
 function xLineSum(){
   const el = $('x-lsum'), f = X.f; if (!el || !f) return;
@@ -2484,6 +2499,7 @@ function xLive(){
   if ($('x-vat')) { const net = xr2(amt / (1 + s.vatRate / 100)); $('x-vat').innerHTML = `<span>Net <b>${aed(net)}</b></span><span>VAT ${s.vatRate}% <b>${aed(amt - net)}</b></span><span>Total <b>${aed(amt)}</b></span>`; }
   if ($('x-md')) $('x-md').innerHTML = '';
   if ($('x-next')) $('x-next').innerHTML = xWhatHappens(f);
+  xSplitSum();
   if ($('x-dn')) { clearTimeout(X._dn); X._dn = setTimeout(() => { if ($('x-dn') && X.f) $('x-dn').innerHTML = xDeliveryCheck(X.f); }, 250); }
   if ($('x-norc')) { const free = xNoRcptCat(f.cat), need = amt > s.receiptLimit && !f.receipts.some(p => p.id || p.uploading) && !free;
     $('x-norc').innerHTML = need ? `<label for="xf-norc">No receipt? Write why (needed above AED ${aed(s.receiptLimit)})</label><input id="xf-norc" data-xi="noRcpt" value="${esc(f.noRcpt || '')}">`
@@ -2493,6 +2509,12 @@ function xLive(){
 async function xSave(){
   const f = X.f, btn = $('x-savebtn'), err = $('x-ferr');
   if (f.receipts.some(p => p.uploading)) { err.textContent = 'Wait for the photo to finish uploading.'; return; }
+  if (f.splitOn) {          // split between sites: at least two sites, adding up to the amount
+    const sp = (f.splits || []).filter(x => x.site), sum = xr2(sp.reduce((a, x) => a + xr2(x.amount), 0));
+    if (sp.length < 2) { err.textContent = 'Choose at least two sites for the split (or untick the split).'; return; }
+    if (Math.abs(sum - xr2(f.amount)) > 0.01) { err.textContent = `The split adds up to ${aed(sum)} but the amount is ${aed(xr2(f.amount))}.`; return; }
+    f.splits = sp; f.alloc = sp[0].site;
+  } else f.splits = [];
   btn.disabled = true; btn.textContent = 'Saving…'; err.textContent = '';
   try {
     const before = new Set((X.d.txns || []).map(t => t.id));
@@ -2883,13 +2905,13 @@ async function xVoucher(t){
   const pay = out || cr ? t.method + (t.chqNo ? ' · Cheque No. ' + t.chqNo + (t.chqDate ? ' dated ' + dmy(t.chqDate) : '') : '') + (t.bank ? ' · ' + t.bank : '') + (t.ref ? ' · ' + (cr && t.method === 'Cheque' ? 'drawn on ' : 'Ref ') + t.ref : '') : (t.ref ? 'Ref ' + t.ref : '');
   const lines = (t.lines || []).length ? `<div class="lh-sec">Item lines</div><table class="lh-tb"><tr><th>#</th><th>Description</th><th class="n">Qty</th><th>Unit</th><th class="n">Rate</th><th class="n">Amount</th></tr>
     ${t.lines.map((l, i) => `<tr><td>${i + 1}</td><td>${esc(l.desc)}</td><td class="n">${esc(l.qty)}</td><td>${esc(l.unit)}</td><td class="n">${xNumTxt(l.rate)}</td><td class="n">${xNumTxt(l.amount)}</td></tr>`).join('')}</table>` : '';
-  lhPrint(title, [['Voucher No.', esc(t.voucher)], ['Date', dmy(t.date)], ['Site', esc(t.alloc || '')], cr && t.invNo ? ['Against invoice', esc(t.invNo)] : ['', '']],
+  lhPrint(title, [['Voucher No.', esc(t.voucher)], ['Date', dmy(t.date)], ['Site', esc((t.splits || []).length > 1 ? t.splits.map(x => x.site).join(' + ') : t.alloc || '')], cr && t.invNo ? ['Against invoice', esc(t.invNo)] : ['', '']],
     `<div class="lh-amt"><div><small>${t.type === 'BILL' ? 'Bill from (amount we owe)' : out ? 'Paid to' : cr ? 'Received with thanks from' : bk ? esc(t.source) : t.type === 'TRANSFER' ? 'Cash handed over' : 'Received from'}</small>
         <div style="font:700 12.5pt 'Segoe UI',Arial">${esc(who)}</div><span>${esc(aedWords(t.amount))}</span></div>
       <div style="text-align:right"><small>Amount</small><b>AED ${aed(t.amount)}</b></div></div>
     ${lhKV([['Being', [t.item, t.desc].filter(Boolean).join(' – ') || t.cat || t.remarks || ''],
       ['Project', cr || out ? [s.project, s.plot, s.client && out ? '' : ''].filter(Boolean).join(' · ') : ''],
-      ['Category', out ? t.cat : ''], ['Payment', pay], ['Cash box', (out || cr) && !xCashLike(t.method) ? '' : t.box],
+      ['Category', out ? t.cat : ''], ['Site split', (t.splits || []).length > 1 ? t.splits.map(x => x.site + ' ' + aed(x.amount)).join(' · ') : ''], ['Payment', pay], ['Cash box', (out || cr) && !xCashLike(t.method) ? '' : t.box],
       ['VAT invoice', t.vat ? 'Net ' + aed(t.net) + ' + VAT ' + aed(t.vatAmt) + (t.trn ? ' · Supplier TRN ' + t.trn : '') : ''],
       ['Qty × rate', t.qty ? t.qty + ' ' + t.unit + ' × ' + aed(t.rate) : ''], ['Vehicle', t.vehicle], ['Staff', t.staff], ['Remarks', t.remarks && (t.item || t.desc) ? t.remarks : '']])}
     ${lines}
@@ -3426,7 +3448,8 @@ function xWhatHappens(f){
   if (f.type === 'BILL') {
     const led = f.party ? xLedger(f.party) : null;
     L.push(`No money moves now – <b>${esc(f.party || 'the supplier')}</b> statement goes up by ${A}${led ? ' (we will owe AED ' + aed(led.bal + amt) + ')' : ''}.`);
-    if (f.alloc) L.push(`Counted in the <b>${esc(f.alloc)}</b> cost${f.vat ? ' (without VAT: AED ' + aed(amt / (1 + s.vatRate / 100)) + ')' : ''}.`);
+    if (f.splitOn) L.push(`Cost split: ${(f.splits || []).filter(x => x.site).map(x => `<b>${esc(x.site)}</b> ${aed(xr2(x.amount))}`).join(' · ')}.`);
+    else if (f.alloc) L.push(`Counted in the <b>${esc(f.alloc)}</b> cost${f.vat ? ' (without VAT: AED ' + aed(amt / (1 + s.vatRate / 100)) + ')' : ''}.`);
     if (f.vat) L.push(`VAT AED ${aed(amt - amt / (1 + s.vatRate / 100))} recorded for your VAT return.`);
     L.push('Pay it later: <b>I paid for something</b> → tick <b>Pays a bill already entered</b>, or press <b>Pay</b> on their statement.');
   } else if (f.type === 'EXPENSE') {
@@ -3438,6 +3461,7 @@ function xWhatHappens(f){
     else L.push(`${A} comes out of <b>${esc(f.bank || 'the bank')}</b>.`);
     L.push(md ? `Goes to the <b>MD for approval</b>${cat && cat.md ? ' (this category always does)' : ''}.` : 'Approved automatically.');
     if (f.onAcct) { const led = xLedger(f.party); L.push(`Pays <b>${esc(f.party)}</b> account – we will owe AED ${aed(led.bal - amt)} after this. Not counted as a new site cost (the bill already was).`); }
+    else if (f.splitOn) L.push(`Cost split: ${(f.splits || []).filter(x => x.site).map(x => `<b>${esc(x.site)}</b> ${aed(xr2(x.amount))}`).join(' · ')}.`);
     else if (f.alloc) L.push(`Counted in the <b>${esc(f.alloc)}</b> cost.`);
     if (f.vat && !f.onAcct) L.push(`VAT AED ${aed(amt - amt / (1 + s.vatRate / 100))} recorded for your VAT return.`);
     if (f.party && !(X.d.parties || []).some(p => xKey(p.name) === xKey(f.party))) L.push(`<b>${esc(f.party)}</b> is new – it will be remembered for next time.`);
@@ -4163,6 +4187,12 @@ $('exp').addEventListener('click', async e => {
   if (b.parentNode && b.parentNode.dataset && b.parentNode.dataset.xchip) { X.f[b.parentNode.dataset.xchip] = b.dataset.v; xForm(); return; }
   if ('xaddrc' in D) { $('x-photo').click(); return; }
   if (D.xdelrc != null) { X.f.receipts.splice(+D.xdelrc, 1); xRc(); return; }
+  if ('xspadd' in D && X.f) { X.f.splits.push({ site: '', amount: '' }); xForm(); return; }
+  if (D.xspdel != null && X.f) { X.f.splits.splice(+D.xspdel, 1); if (X.f.splits.length < 2) X.f.splits.push({ site: '', amount: '' }); xForm(); return; }
+  if ('xspeq' in D && X.f) { const amt = xr2(X.f.amount), sp = X.f.splits.filter(x => x.site), n = sp.length || X.f.splits.length;
+    if (!amt) { toast('Enter the amount first'); return; }
+    const each = Math.floor(amt / n * 100) / 100; (sp.length ? sp : X.f.splits).forEach((x, i, a) => { x.amount = (i === a.length - 1 ? xr2(amt - each * (a.length - 1)) : each).toFixed(2); });
+    xForm(); return; }
   if (b.id === 'x-savebtn') xSave();
 });
 $('exp').addEventListener('input', e => {
@@ -4173,7 +4203,9 @@ $('exp').addEventListener('input', e => {
     if (X.f.type === 'CLIENT RECEIPT' && k === 'invNo' && t.value) { const dd = (X.d.docs || []).find(x => x.no === t.value && x.kind === 'INV');
       if (dd && !xr2(X.f.amount)) { X.f.amount = xr2(dd.total - xDocPaid(dd)).toFixed(2); $('xf-amount').value = X.f.amount; } }
     if (X.f.type === 'BANK' && k === 'bank') { xForm(); return; }
+    if (k === 'splitOn') { if (X.f.splitOn && !(X.f.splits || []).length) X.f.splits = [{ site: X.f.alloc || '', amount: '' }, { site: '', amount: '' }]; xForm(); return; }
     if (k === 'cat' || k === 'alloc' || k === 'vat' || (k === 'box' && X.f.type === 'TRANSFER')) { xForm(); return; } xLive(); return; }
+  if (t.dataset.xsp && X.f) { const [i, k] = t.dataset.xsp.split('|'); X.f.splits[+i][k] = t.value; if (k === 'site') { xForm(); return; } xSplitSum(); xLive(); return; }
   if (t.id === 'xc-box') { X.countBox = t.value; xCount(); return; }
   if (t.dataset.xl && X.f) { const [i, k] = t.dataset.xl.split('|'), l = X.f.lines[+i]; l[k] = t.value;
     if ((k === 'qty' || k === 'rate') && xr2(l.qty) && xr2(l.rate)) { l.amount = xr2(xr2(l.qty) * xr2(l.rate)).toFixed(2); const a = document.querySelector(`[data-xl="${i}|amount"]`); if (a) a.value = l.amount; }
