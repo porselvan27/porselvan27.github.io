@@ -3008,7 +3008,7 @@ async function xOpenDsr(site, id){
 function xSchRefit(old, start, months){
   const n = xSchFromTemplate(start, months, X.sf && X.sf.code ? String(X.sf.code).toUpperCase() : ''); if (!old) return n;
   const byId = {}; old.items.forEach(it => { byId[it.id] = it; });
-  n.items = n.items.filter(it => byId[it.id]).map(it => Object.assign(it, { name: byId[it.id].name, w: byId[it.id].w, pct: byId[it.id].pct }));
+  n.items = n.items.filter(it => byId[it.id]).map(it => Object.assign(it, { name: byId[it.id].name, w: byId[it.id].w, pct: byId[it.id].pct, ph: byId[it.id].ph || it.ph, boq: byId[it.id].boq != null ? byId[it.id].boq : it.boq }));
   const own = old.items.filter(it => !XWP_ID.test(it.id));   // activities you added yourself stay where they are
   n.items = n.items.concat(own).sort((p, q) => p.start.localeCompare(q.start)); n.hist = old.hist || [];
   return n;
@@ -3794,6 +3794,10 @@ const XPH_COL = { 'Preliminaries': '#7f7f7f', 'Substructure': '#4d4d4d', 'Supers
   'Boundary Wall': '#375623', 'Outside Works': '#9c6500', 'MEP - First Fix': '#2e75b6', 'Waterproofing': '#1ea0d8', 'Plaster': '#8497b0', 'Aluminium': '#ffc000',
   'Ceiling Finish': '#a9d18e', 'Ceramic & Marble': '#7030a0', 'Paint': '#c55a11', 'Wood Works': '#d9a441', 'Bath Fittings': '#e06666', 'MEP - Second Fix': '#1f4e79', 'Testing & Handover': '#c00000' };
 const xPhCol = ph => XPH_COL[ph] || '#5b8bd6';
+/* BOQ section of each phase (Al Tarwi BOQ layout: V = villa, SB = service block, BW = boundary wall). Item numbers differ per BOQ – add them per activity. */
+const XPH_BOQ = { 'Preliminaries': 'V-A', 'Substructure': 'V-B', 'Superstructure': 'V-C', 'Block Work': 'V-D', 'Plaster': 'V-E', 'Paint': 'V-F', 'Ceramic & Marble': 'V-G',
+  'Ceiling Finish': 'V-H', 'Bath Fittings': 'V-I', 'Wood Works': 'V-J', 'Aluminium': 'V-K', 'Waterproofing': 'V-L', 'Outside Works': 'V-M', 'MEP - First Fix': 'V-N',
+  'MEP - Second Fix': 'V-N', 'Service Block': 'SB', 'Boundary Wall': 'BW', 'Testing & Handover': '-' };
 const XWP_ID = /^w([1-9]|[1-3]\d|4[01])$/;          // ids of the standard activities (w1…w41); anything else was added by hand
 const xSch = code => (X.d.schedules || {})[code] || null;
 const xActEnd = it => xAddDays(it.start, it.dur - 1);
@@ -3824,7 +3828,7 @@ function xSchFromTemplate(start, months, code){
   let left = 100;
   const items = rows.map(({ r: [ph, name, sw, dw, w], i }, k) => { const b = Math.round((sw - 1) * 7 * f), e = Math.round((sw - 1 + dw) * 7 * f);
     const wt = k === rows.length - 1 ? Math.round(left * 10) / 10 : Math.round(w / W * 1000) / 10; left -= wt;
-    return { id: 'w' + (i + 1), ph, name, w: wt, start: xAddDays(start, b) || start, dur: Math.max(1, e - b), pct: 0 }; });
+    return { id: 'w' + (i + 1), ph, boq: XPH_BOQ[ph] || '', name, w: wt, start: xAddDays(start, b) || start, dur: Math.max(1, e - b), pct: 0 }; });
   return { start, months: +months > 0 ? +months : '', hist: [], items };
 }
 async function xSchSave(code, s, msg){
@@ -3921,7 +3925,7 @@ function xProjGantt(code){
     ${xGantt(s)}
     <button class="btn" data-xwpprint="${esc(code)}" style="width:100%;margin-top:10px">Print work programme (A4 landscape · WhatsApp)</button>
     <div class="x-list" style="margin-top:10px">${s.items.map((it, i) => `<button class="x-it" data-xact="${i}"><span class="ic" style="background:${it.ph ? xPhCol(it.ph) : ''}">${+it.pct}</span>
-      <span class="t"><b>${esc(it.name)}</b><small>${it.ph ? esc(it.ph) + ' · ' : ''}${dmy(it.start)} → ${dmy(xActEnd(it))} · ${it.dur} days · weight ${it.w}%</small></span></button>`).join('')}</div>
+      <span class="t"><b>${esc(it.name)}</b><small>${it.ph ? esc(it.ph) + ' · ' : ''}${it.boq && it.boq !== '-' ? 'BOQ ' + esc(it.boq) + ' · ' : ''}${dmy(it.start)} → ${dmy(xActEnd(it))} · ${it.dur} days · weight ${it.w}%</small></span></button>`).join('')}</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn sec" data-xact="new">+ Activity</button><button class="btn sec" data-xschshift="${esc(code)}">Move whole programme</button></div>`;
 }
 /* activity form: Start / Finish / Duration kept in step; later activities = those starting after this one's original finish */
@@ -3947,6 +3951,7 @@ function xActForm(code, i){
       <div><label>Activity</label><input data-xaf="name" value="${esc(it.name)}"></div>
       <div><label for="xaf-ph">Phase (colour on the chart)</label><input id="xaf-ph" data-xaf="ph" list="xph-list" value="${esc(it.ph || '')}" placeholder="e.g. Superstructure">
         <datalist id="xph-list">${Object.keys(XPH_COL).map(p => `<option value="${esc(p)}">`).join('')}</datalist></div>
+      <div><label for="xaf-boq">BOQ ref. (sheet / section / items)</label><input id="xaf-boq" data-xaf="boq" value="${esc(it.boq || '')}" placeholder="e.g. V-C / 17-18"></div>
       <div class="x-two"><div><label for="xaf-start">Start</label><input type="date" id="xaf-start" data-xaf="start" value="${esc(it.start)}"></div><div><label for="xaf-fin">Finish</label><input type="date" id="xaf-fin" data-xaf="end" value="${esc(xActEnd(it))}"></div></div>
       <div><label for="xaf-dur">Duration (days)</label><div style="display:flex;gap:8px;align-items:center">
         <button type="button" class="btn sec" data-xafstep="-7" aria-label="7 days less">−7</button><button type="button" class="btn sec" data-xafstep="-1" aria-label="1 day less">−1</button>
@@ -3968,7 +3973,7 @@ async function xWpPrint(code){
   const wk = d => Math.floor(xDaysBetween(start, d) / 7) + 1, weeks = Math.max(1, wk(st.finish)), unit = weeks > 84 ? 2 : 1, cols = Math.ceil(weeks / unit);
   const months = +s.months > 0 ? +s.months : Math.round(weeks / 4.345 * 2) / 2, items = s.items, n = items.length, showPct = items.some(it => +it.pct > 0);
   const logo = await lhLogo(), rowH = Math.max(3.1, Math.min(4.8, 158 / Math.max(n, 1))).toFixed(2);
-  const fixedW = 6 + 23 + 58 + 8 + 7 + 8 + (showPct ? 8 : 0), colW = ((285 - fixedW) / cols).toFixed(3);
+  const fixedW = 6 + 21 + 61 + 15 + 8 + 7 + 8 + (showPct ? 8 : 0), colW = ((285 - fixedW) / cols).toFixed(3);
   // month headings: consecutive grid columns that start in the same calendar month
   const grp = []; for (let c = 0; c < cols; c++) { const d = xAddDays(start, c * unit * 7), k = d.slice(0, 7); const g = grp[grp.length - 1];
     if (g && g.k === k) g.n++; else grp.push({ k, n: 1, d }); }
@@ -3989,7 +3994,7 @@ async function xWpPrint(code){
     #sheet .wp-t th,#sheet .wp-t td{border:.2mm solid #b8c4d6;padding:0 .8mm;height:${rowH}mm;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;vertical-align:middle}
     #sheet .wp-t thead th{background:#bdd7ee;color:#1f3b5b;font-weight:700;text-align:center;height:3.6mm;font-size:5.8pt;white-space:normal;line-height:1.05;text-overflow:clip}
     #sheet .wp-t thead tr.wk th{font-size:4.4pt;font-weight:400;padding:0;height:2.8mm}
-    #sheet .wp-t td.c{text-align:center}#sheet .wp-t td.g{padding:0;border-color:#d5dde9}
+    #sheet .wp-t td.c{text-align:center}#sheet .wp-t td.b{font-style:italic;font-size:5.6pt;color:#3a4659}#sheet .wp-t td.g{padding:0;border-color:#d5dde9}
     #sheet .wp-t td.tc,#sheet .wp-t th.tc{box-shadow:inset .5mm 0 0 #c00000}
     #sheet .wp-leg{display:flex;flex-wrap:wrap;gap:1mm 4mm;align-items:center;margin-top:2mm;font-size:5.8pt}
     #sheet .wp-leg i{display:inline-block;width:4mm;height:2.6mm;margin-right:1mm;vertical-align:middle;border:.15mm solid #0003}
@@ -3998,12 +4003,12 @@ async function xWpPrint(code){
   <div class="wp">
     <div class="wp-band"><div class="wp-logo"><img src="${logo || LOGO}" alt=""><b>AL TARWI<span>BUILDING CONTRACTING</span></b></div>
       <div class="wp-tt"><b>${title}</b><div>${line1}</div><div>${line2}</div></div></div>
-    <table class="wp-t"><colgroup><col style="width:6mm"><col style="width:23mm"><col style="width:58mm"><col style="width:8mm"><col style="width:7mm"><col style="width:8mm">${showPct ? '<col style="width:8mm">' : ''}${`<col style="width:${colW}mm">`.repeat(cols)}</colgroup>
-      <thead><tr><th rowspan="2">No.</th><th rowspan="2">Phase</th><th rowspan="2">Activity Description</th><th rowspan="2">Start Wk</th><th rowspan="2">Dur (wk)</th><th rowspan="2">End Wk</th>${showPct ? '<th rowspan="2">Done</th>' : ''}
+    <table class="wp-t"><colgroup><col style="width:6mm"><col style="width:21mm"><col style="width:61mm"><col style="width:15mm"><col style="width:8mm"><col style="width:7mm"><col style="width:8mm">${showPct ? '<col style="width:8mm">' : ''}${`<col style="width:${colW}mm">`.repeat(cols)}</colgroup>
+      <thead><tr><th rowspan="2">No.</th><th rowspan="2">Phase</th><th rowspan="2">Activity Description</th><th rowspan="2">BOQ Ref.</th><th rowspan="2">Start Wk</th><th rowspan="2">Dur (wk)</th><th rowspan="2">End Wk</th>${showPct ? '<th rowspan="2">Done</th>' : ''}
         ${grp.map((g, k) => `<th colspan="${g.n}" title="${g.k}">${g.n * colW >= 7 ? 'Month ' + (k + 1) : k + 1}${g.n * colW >= 14 ? ' · ' + new Date(g.d + 'T12:00').toLocaleString('en-GB', { month: 'short', year: '2-digit' }) : ''}</th>`).join('')}</tr>
         <tr class="wk">${Array.from({ length: cols }, (_, c) => `<th class="${c === tc ? 'tc' : ''}">${unit === 1 ? c + 1 : c * 2 + 1}</th>`).join('')}</tr></thead>
       <tbody>${items.map((it, i) => { const sw = wk(it.start), ew = wk(xActEnd(it)), col = it.ph ? xPhCol(it.ph) : '#5b8bd6';
-        return `<tr><td class="c">${i + 1}</td><td>${esc(it.ph || '')}</td><td>${esc(it.name)}</td><td class="c">${sw}</td><td class="c">${ew - sw + 1}</td><td class="c">${ew}</td>${showPct ? `<td class="c">${+it.pct}%</td>` : ''}
+        return `<tr><td class="c">${i + 1}</td><td>${esc(it.ph || '')}</td><td>${esc(it.name)}</td><td class="b">${esc(it.boq || '')}</td><td class="c">${sw}</td><td class="c">${ew - sw + 1}</td><td class="c">${ew}</td>${showPct ? `<td class="c">${+it.pct}%</td>` : ''}
           ${Array.from({ length: cols }, (_, c) => { const a = c * unit + 1, b = a + unit - 1, on = sw <= b && ew >= a;
             return `<td class="g${c === tc ? ' tc' : ''}"${on ? ` style="background:${col}"` : ''}></td>`; }).join('')}</tr>`; }).join('')}</tbody></table>
     ${ph.length ? `<div class="wp-leg"><b style="margin-right:2mm">Phase legend:</b>${ph.map(p => `<span><i style="background:${xPhCol(p)}"></i>${esc(p)}</span>`).join('')}</div>` : ''}
