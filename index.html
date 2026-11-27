@@ -3002,8 +3002,25 @@ async function xOpenDsr(site, id){
   else startReport(site);
   document.body.classList.remove('at-exp'); openApp('form'); window.scrollTo(0, 0);
 }
+/* programme from the project details: start date + months -> the 20 villa activities. Re-fitting keeps names, weights, % done and own activities. */
+function xSchRefit(old, start, months){
+  const n = xSchFromTemplate(start, months); if (!old) return n;
+  const byId = {}; old.items.forEach(it => { byId[it.id] = it; });
+  n.items = n.items.filter(it => byId[it.id]).map(it => Object.assign(it, { name: byId[it.id].name, w: byId[it.id].w, pct: byId[it.id].pct }));
+  const own = old.items.filter(it => !/^a([1-9]|1\d|20)$/.test(it.id));   // activities you added yourself stay where they are
+  n.items = n.items.concat(own).sort((p, q) => p.start.localeCompare(q.start)); n.hist = old.hist || [];
+  return n;
+}
+function xSitePHint(){
+  const el = $('xs-phint'), f = X.sf; if (!el || !f) return;
+  const sc = f.code ? xSch(String(f.code).toUpperCase()) : null, st = f.pstart, mo = +f.pmonths;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(st || '') || !(mo > 0)) { el.textContent = sc ? 'Programme ' + dmy(xSchStats(sc).start) + ' → ' + dmy(xSchStats(sc).finish) + '.' : 'Enter the start date and months – the 20 activities are made when you save.'; return; }
+  const fin = dmy(xAddDays(st, xMonthsDays(st, mo) - 1)), same = sc && sc.start === st && +sc.months === mo;
+  el.textContent = 'Finishes ' + fin + '. ' + (!sc ? 'Saving creates the programme (20 activities).' : same ? 'No change to the programme.' : 'Saving re-fits the activity dates to this period – % done is kept.');
+}
 function xSiteForm(code){
   const s = code ? Object.assign({}, xSite(code)) : { code: '', status: 'Active' }, ro = !xIsAdmin();
+  const sc = code ? xSch(code) : null; s.pstart = sc ? sc.start : ''; s.pmonths = sc && sc.months ? sc.months : '';
   const f = (k, l, ph, more) => `<div><label for="xs-${k}">${l}</label><input id="xs-${k}" data-xs="${k}" value="${esc(s[k] == null ? '' : s[k])}" placeholder="${esc(ph || '')}" ${more || ''} ${ro ? 'disabled' : ''}></div>`;
   X.sf = s; X.view = 'sitef';
   const m = code ? xSiteMoney(code) : null;
@@ -3018,10 +3035,14 @@ function xSiteForm(code){
       <div class="x-two">${f('retention', 'Retention %', String(X.d.settings.retention || 5), 'inputmode="decimal"')}${f('advance', 'Advance paid by client (AED)', '0.00', 'inputmode="decimal"')}</div>
       <div><label for="xs-status">Status</label><select id="xs-status" data-xs="status" ${ro ? 'disabled' : ''}>${['Active', 'On hold', 'Completed'].map(v => `<option${v === s.status ? ' selected' : ''}>${v}</option>`).join('')}</select></div>
     </div></div>
+    <div class="card"><h2>PROGRAMME (GANTT CHART)</h2><div class="body">
+      <div class="x-two">${f('pstart', 'Project start date', '', 'type="date"')}${f('pmonths', 'Duration (months)', 'e.g. 12', 'type="number" min="1" max="60" step="0.5" inputmode="decimal"')}</div>
+      <p class="hint" id="xs-phint" style="margin:0"></p></div></div>
     ${m ? `<div class="x-stats"><div><b>${aed(m.inv)}</b><small>Invoiced</small></div><div><b>${aed(m.rec)}</b><small>Received</small></div><div><b class="${m.due > 0 ? 'neg' : ''}">${aed(m.due)}</b><small>Outstanding</small></div></div>
       ${m.cert ? `<p class="hint">Last certificate ${esc(m.cert.no)} (${dmy(m.cert.date)}): work done ${aed(m.cert.data.workDone)} · ${m.cert.data.pct || 0}%.</p>` : ''}` : ''}
     <p class="x-ferr" id="x-ferr"></p></div>
     <div class="x-save"><div>${code ? `<button class="btn sec" data-xsitep="${esc(code)}">Back</button>` : '<button class="btn sec" data-xback="sites">Back</button>'}${ro ? '' : '<button class="btn ok" id="xs-save">Save site</button>'}</div></div>`;
+  xSitePHint();
 }
 
 /* ---------- bank accounts: balance from app entries + cleared cheques ---------- */
@@ -4643,7 +4664,14 @@ $('exp').addEventListener('click', async e => {
   if (D.xsitef != null) { xSiteForm(D.xsitef); $('exp').scrollTop = 0; return; }
   if (b.id === 'xs-save') {
     b.disabled = true; b.textContent = 'Saving…';
-    try { X.d = await server('expSaveSite', X.sf, X.pin); keep('exp.cache', X.d); toast('Site ' + X.sf.code + ' saved'); X.siteCode = String(X.sf.code).toUpperCase(); xGo('site'); }
+    const f = X.sf, code = String(f.code || '').trim().toUpperCase(), old = code ? xSch(code) : null, mo = +f.pmonths;
+    const want = /^\d{4}-\d{2}-\d{2}$/.test(f.pstart || '') && mo > 0, changed = want && (!old || old.start !== f.pstart || +old.months !== mo);
+    if ((f.pstart || f.pmonths) && !want) { $('x-ferr').textContent = 'For the programme enter both the start date and the months (or leave both empty).'; b.disabled = false; b.textContent = 'Save site'; return; }
+    if (changed && old && !await ask(`Re-fit the ${code} programme to start ${dmy(f.pstart)} for ${mo} months? The activity dates are worked out again; names, weights and % done are kept.`, 'Re-fit')) { b.disabled = false; b.textContent = 'Save site'; return; }
+    try { X.d = await server('expSaveSite', f, X.pin); keep('exp.cache', X.d);
+      let msg = 'Site ' + code + ' saved';
+      if (changed) { const s = xSchRefit(old, f.pstart, mo); await xSchSave(code, s, ''); msg += old ? ' – programme re-fitted' : ' – programme created (' + s.items.length + ' activities, finishes ' + dmy(xSchStats(s).finish) + ')'; X.projTab = 'gantt'; }
+      toast(msg); X.siteCode = code; xGo('site'); }
     catch (er) { $('x-ferr').textContent = errText(er); b.disabled = false; b.textContent = 'Save site'; }
     return;
   }
@@ -4827,7 +4855,7 @@ $('exp').addEventListener('input', e => {
   if (t.dataset.xl && X.f) { const [i, k] = t.dataset.xl.split('|'), l = X.f.lines[+i]; l[k] = t.value;
     if ((k === 'qty' || k === 'rate') && xr2(l.qty) && xr2(l.rate)) { l.amount = xr2(xr2(l.qty) * xr2(l.rate)).toFixed(2); const a = document.querySelector(`[data-xl="${i}|amount"]`); if (a) a.value = l.amount; }
     xLineSum(); xLive(); return; }
-  if (t.dataset.xs && X.sf) { X.sf[t.dataset.xs] = t.value; return; }
+  if (t.dataset.xs && X.sf) { X.sf[t.dataset.xs] = t.value; if (/^pstart|pmonths$/.test(t.dataset.xs)) xSitePHint(); return; }
   if (t.dataset.xcb && X.cb) { const [i, k] = t.dataset.xcb.split('|'); X.cb.rows[+i][k] = t.value; if (k === 'party') delete X.cb.rows[+i]._auto; if (k === 'no' || k === 'amount') { clearTimeout(X._cb); X._cb = setTimeout(() => { const a = document.activeElement, sel = a && a.dataset.xcb; xChqBatch(); if (sel) { const n = document.querySelector(`[data-xcb="${sel}"]`); if (n) { n.focus(); try { n.setSelectionRange(n.value.length, n.value.length); } catch (e) {} } } }, 700); } return; }
   if (t.dataset.xcball && X.cb) { const k = t.dataset.xcball, v = t.value; X.cb[k] = v;
     X.cb.rows.forEach(r => { if (k !== 'party') r[k] = v; else if (!r.party || r._auto) { r.party = v; r._auto = true; } });
