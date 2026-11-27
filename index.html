@@ -1954,7 +1954,8 @@ function xGo(v){
   else if (v === 'cost') xCost(); else if (v === 'budget') xBudget(); else if (v === 'veh') xVeh();
   else if (v === 'bank') { if (was !== 'bank' && was !== 'detail' && was !== 'chqd') X.bankSel = ''; xBank(); } else if (v === 'chq') xChq();
   else if (v === 'docs') xDocs(); else if (v === 'sites') xSites(); else if (v === 'new') xNewMenu(); else if (v === 'site') xSitePage(X.siteCode);
-  else if (v === 'supp') xSupp(); else if (v === 'suppd') xSuppDetail(X.suppName); else if (v === 'pnl') xPnl(); else if (v === 'pnld') xPnlSite(X.pnlSite); else if (v === 'brec') xBankRec(); else if (v === 'srec') xSuppRec();
+  else if (v === 'supp') xSupp(); else if (v === 'suppd') xSuppDetail(X.suppName); else if (v === 'pnl') xPnl(); else if (v === 'pnld') xPnlSite(X.pnlSite);
+  else if (v === 'letters') xLetters(); else if (v === 'ltrd') xLtrDetail(X.ltrId); else if (v === 'ltrnew') xLtrMenu(); else if (v === 'brec') xBankRec(); else if (v === 'srec') xSuppRec();
   else if (v === 'miss') xMiss(); else if (v === 'sum') { if (was !== 'sum') { X.sum = {}; X.sumDate = today(); } xSum(); }
   $('exp').scrollTop = 0;
   if (X.deep) { const t = X.d.txns.find(x => x.voucher === X.deep); X.deep = ''; if (t) xDetail(t.id); else toast('Voucher not found or not visible to you'); }
@@ -2035,6 +2036,9 @@ function xHome(){
           tile('data-x="chq"', '--i-file', 'Cheques', pch.length ? pch.length + ' not cleared' + (pch.filter(xChqDue).length ? ' · ' + pch.filter(xChqDue).length + ' due soon' : '') : 'Nothing waiting'),
           (() => { const owe = xSuppliers().reduce((s, p) => s + Math.max(0, p.bal), 0);
             return tile('data-x="supp"', '--i-users', 'Suppliers & subcontractors', owe > 0.5 ? 'We owe AED ' + aed(owe) + ' · statements' : 'Add · bills · statements'); })()]) : '')
+        + sec('Site paperwork', [
+          (() => { const L = (d.letters || []).filter(l => l.status !== 'Cancelled'), open = L.filter(l => /Draft|Sent/.test(l.status)).length;
+            return tile('data-x="letters"', '--i-file', 'Letters & reports', L.length ? L.length + ' · ' + open + ' open · EOT, NCR, RFI…' : 'EOT claim, NCR, RFI, inspection, letters'); })()])
         + sec(xSeesAll() ? 'Cash' : 'My cash', [
           xCanAdd() && box ? tile('data-xnew="TRANSFER"', '--i-arrow', 'Give cash', 'Hand cash to a colleague') : '',
           box ? tile('data-x="count"', '--i-check', 'Count cash', cnt ? 'Last ' + dmy(cnt.date) + (cnt.diff ? ' · diff ' + aed(cnt.diff) : ' · OK') : 'Not counted yet') : '',
@@ -3324,6 +3328,19 @@ xScanIn.onchange = async () => {
   } catch (er) { toast('Scan failed: ' + errText(er)); if (btn) { btn.disabled = false; btn.textContent = btnTxt; } }
 };
 
+/* photos for letters / reports (NCR, inspection …) */
+const xLtrPhotoIn = Object.assign(document.createElement('input'), { type: 'file', accept: 'image/*', multiple: true, hidden: true });
+document.body.appendChild(xLtrPhotoIn);
+xLtrPhotoIn.onchange = async () => {
+  const files = [...xLtrPhotoIn.files]; xLtrPhotoIn.value = ''; const f = X.lf; if (!f) return;
+  for (const file of files.slice(0, 6)) {
+    const p = { uploading: true, src: '' }; f.data.photos.push(p);
+    try { p.src = await shrink(file, 1600, 0.75); if (X.view === 'ltrf') xLtrForm();
+      const r = await server('expUpload', p.src, X.pin); p.id = r.id; p.uploading = false; }
+    catch (er) { f.data.photos.splice(f.data.photos.indexOf(p), 1); toast('Photo not added: ' + errText(er)); }
+    if (X.view === 'ltrf') xLtrForm();
+  }
+};
 /* ---------- scan several cheques at once (e.g. a client's post-dated cheques) -> review list -> save all ---------- */
 const xScanMany = Object.assign(document.createElement('input'), { type: 'file', accept: 'image/*,application/pdf', multiple: true, hidden: true });
 document.body.appendChild(xScanMany);
@@ -3520,6 +3537,9 @@ function xSitePage(code){
     ${fold('Daily Site Reports', reps.length + ' reports' + (reps[0] ? ' · last ' + dmy(reps[0].date) : ''), reps.slice(0, 7).map(r => `<div class="x-vrow" style="display:block"><b style="display:block">${dmy(r.date)} · ${man(r)} men</b><small class="hint">${esc(((r.work || []).map(w => w.text).filter(Boolean)[0] || '').slice(0, 110))}</small></div>`).join('') || '<p class="hint">No reports for this site.</p>')}
     ${fold('Materials delivered (60 days)', dl.length + ' lines' + (noBill.length ? ' · ' + noBill.length + ' no bill' : ''), dl.slice(0, 25).map(x => `<div class="x-vrow"><span>${dmy(x.date)} · ${esc(x.qty)} ${esc(x.desc)}<br><small class="hint">${esc(x.party || 'supplier not written')}</small></span>
       <b style="color:${x.bill ? 'var(--ok)' : 'var(--danger)'};white-space:normal;text-align:right">${x.bill ? 'Billed ' + esc(x.bill.voucher) : 'No bill yet'}</b></div>`).join('') || '<p class="hint">No materials received in the Daily Site Reports.</p>')}
+    ${(() => { const L = (d.letters || []).filter(l => l.site === code && l.status !== 'Cancelled');
+      return fold('Letters & reports', L.length + ' · EOT, NCR, RFI…', `<div class="x-list">${L.slice(0, 8).map(xLtrRow).join('') || '<div class="empty">None yet.</div>'}</div>
+        <div style="display:flex;gap:8px;margin-top:8px"><button class="btn sec" data-xltrsitenew="${esc(code)}">+ Letter / report</button>${L.length > 8 ? `<button class="btn sec" data-xltrsite="${esc(code)}">See all</button>` : ''}</div>`); })()}
     ${fold('Latest expenses', exps.length + ' entries', `<div class="x-list">${exps.slice(0, 8).map(xRow).join('') || '<div class="empty">None yet.</div>'}</div>`)}
     <div class="x-save"><div><button class="btn sec" data-x="sites">Back</button><button class="btn sec" data-xsitef="${esc(code)}">Details</button>
       ${xCanAdd() ? `<button class="btn sec" data-xnewsite="EXPENSE">+ Expense</button>` : ''}${xIsAdmin() ? `<button class="btn" data-xnewsite="CLIENT RECEIPT">Client paid</button>` : ''}</div></div>`;
@@ -3882,6 +3902,176 @@ function xPnlSitePrint(code){
     <p class="lh-note">Received from the client: AED ${aed(s.received || 0)} · still due: AED ${aed(s.due || 0)} (incl. VAT).</p>
     ${lhSig([['Prepared by', X.d.user.name], ['Checked by', ''], ['Approved by (MD)', '']])}`);
 }
+/* =================== LETTERS & SITE REPORTS (EOT claim, NCR, RFI, inspection request …) =================== */
+/* field types: t = text, a = long text, d = date, n = number, s:opt1|opt2 = choice */
+const XLTR = {
+  LTR: { t: 'Letter', ic: 'LT', to: 'client', sub: 'Any letter on the letterhead', f: [] },
+  EOT: { t: 'Extension of time claim', ic: 'EOT', to: 'consultant', sub: 'Claim more days – delay events, days claimed, new completion date',
+    f: [['contractStart', 'Contract start date', 'd'], ['origCompletion', 'Contract completion date (now)', 'd'], ['clause', 'Contract clause (optional)', 't']] },
+  DN: { t: 'Notice of delay', ic: 'DN', to: 'consultant', sub: 'Give notice early when something delays the work',
+    f: [['event', 'What is delaying the work', 'a'], ['since', 'Started on', 'd'], ['impact', 'Expected delay (days)', 'n'], ['cause', 'Caused by', 's:Client|Consultant|Authority / utility|Weather|Other'], ['mitigation', 'What we are doing to reduce it', 'a']] },
+  NCR: { t: 'Non-conformance report', ic: 'NCR', to: 'subcontractor', sub: 'Work or material not as per specification – cause and corrective action',
+    f: [['location', 'Location / element', 't'], ['severity', 'Severity', 's:Minor|Major|Critical'], ['description', 'Non-conformance found', 'a'], ['specRef', 'Specification / drawing ref.', 't'],
+      ['rootCause', 'Root cause', 'a'], ['corrective', 'Corrective action', 'a'], ['preventive', 'Preventive action', 'a'], ['target', 'To be closed by', 'd'], ['consultantNcr', "Reply to consultant's NCR No. (if any)", 't']] },
+  VAR: { t: 'Variation request', ic: 'VAR', to: 'consultant', sub: 'Extra or changed work – cost and time impact',
+    f: [['description', 'Change / extra work', 'a'], ['reason', 'Reason', 's:Client request|Design change|Site condition|Authority requirement|Other'], ['instructedBy', 'Instructed by', 't'],
+      ['instructionDate', 'Instruction date', 'd'], ['cost', 'Cost impact (AED, without VAT)', 'n'], ['days', 'Time impact (days)', 'n']] },
+  RFI: { t: 'Request for information', ic: 'RFI', to: 'consultant', sub: 'Ask the consultant to clarify a drawing or detail',
+    f: [['drawingRef', 'Drawing / spec ref.', 't'], ['question', 'Question', 'a'], ['proposal', 'Our proposal (optional)', 'a'], ['neededBy', 'Reply needed by', 'd']] },
+  WIR: { t: 'Work inspection request', ic: 'WIR', to: 'consultant', sub: 'Ask for inspection before casting / closing / next stage',
+    f: [['element', 'Work to inspect', 't'], ['location', 'Location / grid / level', 't'], ['inspDate', 'Inspection date', 'd'], ['inspTime', 'Time', 't'], ['drawingRef', 'Drawing ref.', 't'], ['ready', 'Ready for inspection (checks done)', 'a']] },
+  CVI: { t: 'Confirmation of verbal instruction', ic: 'CVI', to: 'consultant', sub: 'Put an instruction given on site in writing',
+    f: [['instructedBy', 'Instruction given by', 't'], ['instructionDate', 'Date of instruction', 'd'], ['instruction', 'Instruction', 'a'], ['impact', 'Cost / time impact', 't']] },
+  PAY: { t: 'Payment reminder', ic: 'PAY', to: 'client', sub: 'Remind the client about unpaid invoices', f: [] },
+  HO: { t: 'Handover / completion notice', ic: 'HO', to: 'client', sub: 'Work completed – request inspection and handover',
+    f: [['completion', 'Completion date', 'd'], ['handed', 'Handed over (keys, drawings, warranties …)', 'a'], ['snags', 'Remaining minor items (if any)', 'a']] }
+};
+const XLTR_ST = ['Draft', 'Sent', 'Replied', 'Closed'];
+const xLtrRecip = (kind, site) => { const s = xSite(site), w = (XLTR[kind] || XLTR.LTR).to;
+  return w === 'consultant' ? (s.consultant || '') : w === 'client' ? (s.client || '') : ''; };
+const xAddDays = (d, n) => { if (!d || !n) return ''; const x = new Date(d + 'T12:00'); x.setDate(x.getDate() + Math.round(n)); return x.toISOString().slice(0, 10); };
+function xLtrUnpaid(site){ return (X.d.docs || []).filter(x => x.kind === 'INV' && x.site === site && x.status !== 'Cancelled' && /Unpaid|Part/.test(xDocState(x))); }
+function xLtrEot(D){ const days = xr2((D.events || []).reduce((a, e) => a + xr2(e.days), 0)); return { days, newDate: xAddDays(D.origCompletion, days) }; }
+/* the letter text made from the details (the user can still change it) */
+function xLtrText(f){
+  const D = f.data || {}, s = xSite(f.site), proj = s.project ? s.project + (s.plot ? ', Plot ' + s.plot : '') : f.site, d = v => v ? dmy(v) : '…';
+  switch (f.kind) {
+    case 'EOT': { const e = xLtrEot(D);
+      return `We refer to the above project${s.client ? ' for ' + s.client : ''}.\n\nThe progress of the works has been delayed by the events listed below, which are beyond the control of the Contractor. ` +
+        `In accordance with the Contract${D.clause ? ' (' + D.clause + ')' : ''}, we hereby submit our claim for an extension of time of ${e.days || '…'} calendar days.\n\n` +
+        `The current contract completion date is ${d(D.origCompletion)}. With the requested extension, the revised completion date will be ${d(e.newDate)}.\n\n` +
+        `Supporting records (daily site reports, correspondence and photographs) are available for your review. We kindly request your approval at the earliest.`; }
+    case 'DN': return `We hereby give notice that the works are being delayed since ${d(D.since)} by the following event: ${D.event || '…'}.\n\n` +
+      `This is caused by: ${D.cause || '…'}. The expected impact on the programme is about ${D.impact || '…'} days.\n\nTo reduce the delay we are: ${D.mitigation || '…'}.\n\n` +
+      `We reserve our right to claim an extension of time and the related costs, and will submit the details once the effect is known.`;
+    case 'NCR': return `During inspection at ${D.location || '…'}, the following non-conformance was found: ${D.description || '…'}` +
+      `${D.specRef ? ' (ref. ' + D.specRef + ')' : ''}.\n\nPlease carry out the corrective action stated below and close this NCR by ${d(D.target)}. Inform us when the work is ready for re-inspection.`;
+    case 'VAR': return `We refer to the instruction given by ${D.instructedBy || '…'} on ${d(D.instructionDate)} regarding the following change: ${D.description || '…'}.\n\n` +
+      `This work is not included in the original contract scope (reason: ${D.reason || '…'}). The estimated cost impact is AED ${D.cost ? aed(D.cost) : '…'} (excluding VAT) and the time impact is ${D.days || '0'} days.\n\n` +
+      `We kindly request your approval of this variation before we proceed.`;
+    case 'RFI': return `Please clarify the following${D.drawingRef ? ' regarding ' + D.drawingRef : ''}:\n\n${D.question || '…'}` +
+      `${D.proposal ? '\n\nOur proposal: ' + D.proposal : ''}\n\nTo avoid delay to the works, we request your reply by ${d(D.neededBy)}.`;
+    case 'WIR': return `The following work is ready for your inspection: ${D.element || '…'} at ${D.location || '…'}${D.drawingRef ? ' (drawing ' + D.drawingRef + ')' : ''}.\n\n` +
+      `Kindly arrange the inspection on ${d(D.inspDate)}${D.inspTime ? ' at ' + D.inspTime : ''}.${D.ready ? '\n\nChecks completed: ' + D.ready : ''}`;
+    case 'CVI': return `We confirm the verbal instruction given by ${D.instructedBy || '…'} on ${d(D.instructionDate)}:\n\n${D.instruction || '…'}` +
+      `\n\n${D.impact ? 'Impact: ' + D.impact + '. ' : ''}Unless we receive your written comments within 3 days, we will proceed accordingly. Any cost and time effect will be treated as a variation.`;
+    case 'PAY': { const inv = xLtrUnpaid(f.site), due = inv.reduce((a, x) => a + x.total - xDocPaid(x), 0);
+      return `We would like to remind you that the following invoice${inv.length > 1 ? 's are' : ' is'} still outstanding for the above project:\n\n` +
+        (inv.map(x => `${x.no} dated ${dmy(x.date)} – balance AED ${aed(x.total - xDocPaid(x))}`).join('\n') || '…') +
+        `\n\nTotal due: AED ${aed(due)}. Kindly arrange the payment at the earliest. Thank you for your cooperation.`; }
+    case 'HO': return `We are pleased to inform you that the works for ${proj} were completed on ${d(D.completion)}.\n\n` +
+      `Kindly arrange the final inspection and taking over of the works.${D.handed ? '\n\nHanded over: ' + D.handed : ''}${D.snags ? '\n\nRemaining minor items (will be completed during the defects period): ' + D.snags : ''}`;
+    default: return '';
+  }
+}
+function xLtrSubject(f){ const s = xSite(f.site), D = f.data || {}, p = (s.project || f.site) + (s.plot ? ' – Plot ' + s.plot : '');
+  return ({ EOT: 'Extension of time claim – ' + p, DN: 'Notice of delay – ' + p, NCR: 'Non-conformance – ' + (D.location || p), VAR: 'Variation request – ' + p,
+    RFI: 'Request for information – ' + (D.drawingRef || p), WIR: 'Inspection request – ' + (D.element || p), CVI: 'Confirmation of verbal instruction – ' + p,
+    PAY: 'Payment reminder – ' + p, HO: 'Completion and handover – ' + p })[f.kind] || p; }
+/* list (all projects, or one) */
+function xLetters(){
+  X.view = 'letters'; const site = X.ltrSite || '', k = X.ltrKind || '';
+  const L = (X.d.letters || []).filter(l => (!site || l.site === site) && (!k || l.kind === k) && l.status !== 'Cancelled');
+  const sites = [...new Set([...X.d.sites.map(s => s.code), ...(X.d.letters || []).map(l => l.site)])].sort();
+  xMain().innerHTML = `<div class="x-big"><button class="in" data-xltrnew>+ New letter / report<small>EOT, NCR, RFI, inspection, delay notice…</small></button></div>
+    <div class="x-filt" style="grid-template-columns:1fr 1fr;margin-top:10px"><select data-xltrf="site"><option value="">All projects</option>${sites.map(c => `<option${c === site ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select>
+      <select data-xltrf="kind"><option value="">All types</option>${Object.entries(XLTR).map(([c, x]) => `<option value="${c}"${c === k ? ' selected' : ''}>${esc(x.t)}</option>`).join('')}</select></div>
+    <div class="x-list">${L.map(xLtrRow).join('') || '<div class="empty">No letters yet.</div>'}</div>
+    <div class="x-save"><div><button class="btn sec" data-x="home">Back</button></div></div>`;
+  $('exp').scrollTop = 0;
+}
+const xLtrRow = l => `<button class="x-it" data-xltr="${esc(l.id)}"><span class="ic ${l.kind === 'NCR' ? '' : 'tr'}">${esc((XLTR[l.kind] || XLTR.LTR).ic)}</span>
+  <span class="t"><b>${esc(l.subject)}</b><small>${esc(l.no)} · ${dmy(l.date)}${l.to ? ' · to ' + esc(l.to) : ''}</small><br><span class="x-st ${l.status === 'Closed' ? 'Approved' : l.status === 'Draft' ? 'Pending' : 'Confirmed'}">${esc(l.status)}</span></span></button>`;
+function xLtrMenu(){
+  X.view = 'ltrnew';
+  xMain().innerHTML = `<div class="x-sec">Choose the type</div><div class="x-menu">${Object.entries(XLTR).map(([c, x]) =>
+      `<button data-xltrk="${c}"><i>${esc(x.ic)}</i><span><b>${esc(x.t)}</b><small>${esc(x.sub)}</small></span></button>`).join('')}</div>
+    <div class="x-save"><div><button class="btn sec" data-x="letters">Back</button></div></div>`;
+}
+function xLtrNew(kind, site){
+  const f = { kind, site: site || X.ltrSite || '', date: today(), to: '', subject: '', data: { attn: '', cc: '', photos: [], events: kind === 'EOT' ? [{ cause: '', from: '', to: '', days: '' }] : [] } };
+  (XLTR[kind].f || []).forEach(([k, , ty]) => { if (f.data[k] == null) f.data[k] = ty && ty.startsWith('s:') ? ty.slice(2).split('|')[0] : ''; });
+  if (f.site) { f.to = xLtrRecip(kind, f.site); f.subject = xLtrSubject(f); f.data.body = xLtrText(f); }
+  X.lf = f; xLtrForm();
+}
+function xLtrForm(){
+  X.view = 'ltrf'; const f = X.lf, K = XLTR[f.kind] || XLTR.LTR, D = f.data, o = (v, l, cur) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(l)}</option>`;
+  const fld = ([k, label, ty]) => { const v = D[k] == null ? '' : D[k];
+    if (ty === 'a') return `<div><label>${esc(label)}</label><textarea data-xlf="${k}" rows="3">${esc(v)}</textarea></div>`;
+    if (ty && ty.startsWith('s:')) return `<div><label>${esc(label)}</label><select data-xlf="${k}">${ty.slice(2).split('|').map(x => o(x, x, v)).join('')}</select></div>`;
+    return `<div><label>${esc(label)}</label><input data-xlf="${k}" ${ty === 'd' ? 'type="date"' : ty === 'n' ? 'inputmode="decimal"' : ''} value="${esc(v)}"></div>`; };
+  const e = f.kind === 'EOT' ? xLtrEot(D) : null;
+  xMain().innerHTML = `<div class="x-form"><div class="card"><h2>${f.id ? 'EDIT ' + esc(f.no) : esc(K.t.toUpperCase())}</h2><div class="body">
+      <div class="x-two"><div><label>Project / site</label><select data-xlt="site">${o('', 'Choose…', f.site)}${X.d.sites.map(s => o(s.code, s.code + (s.client ? ' – ' + s.client.split(' ').slice(0, 2).join(' ') : ''), f.site)).join('')}</select></div>
+        <div><label>Date</label><input type="date" data-xlt="date" value="${esc(f.date)}"></div></div>
+      <div><label>To</label><input data-xlt="to" value="${esc(f.to)}" placeholder="${K.to === 'subcontractor' ? 'Subcontractor / supplier' : K.to === 'client' ? 'Client' : 'Consultant'}" list="x-parties"></div>
+      <div class="x-two"><div><label>Attention</label><input data-xlf="attn" value="${esc(D.attn || '')}" placeholder="Name / position"></div><div><label>CC</label><input data-xlf="cc" value="${esc(D.cc || '')}"></div></div>
+      <div><label>Subject</label><input data-xlt="subject" value="${esc(f.subject)}"></div>
+      ${(K.f || []).map(fld).join('')}
+      ${f.kind === 'EOT' ? `<div class="x-sec" style="margin:6px 0 0">Delay events</div>
+        ${(D.events || []).map((ev, i) => `<div class="card" style="padding:10px;margin:0"><div><label>Event ${i + 1} – cause</label><input data-xle="${i}|cause" value="${esc(ev.cause)}" placeholder="e.g. Late approval of shop drawings by consultant"></div>
+          <div class="x-three"><div><label>From</label><input type="date" data-xle="${i}|from" value="${esc(ev.from)}"></div><div><label>To</label><input type="date" data-xle="${i}|to" value="${esc(ev.to)}"></div>
+          <div><label>Days claimed</label><input data-xle="${i}|days" inputmode="decimal" value="${esc(ev.days)}"></div></div>
+          <button type="button" class="x-linkbtn" data-xledel="${i}" style="color:var(--danger)">Remove event</button></div>`).join('')}
+        <button type="button" class="btn sec" data-xleadd style="justify-self:start">+ Delay event</button>
+        <p class="x-md" id="xl-eot">Total claimed: <b>${e.days} days</b> · new completion date <b>${e.newDate ? dmy(e.newDate) : '–'}</b></p>` : ''}
+      ${f.kind === 'PAY' && f.site ? `<p class="x-md">${xLtrUnpaid(f.site).length ? 'Unpaid: ' + xLtrUnpaid(f.site).map(x => esc(x.no) + ' AED ' + aed(x.total - xDocPaid(x))).join(' · ') : 'No unpaid invoice for this site.'}</p>` : ''}
+      <div><label>Letter text</label><textarea data-xlf="body" rows="9">${esc(D.body || '')}</textarea>
+        <button type="button" class="x-linkbtn" data-xlregen>Write the text again from the details above</button></div>
+      <div><label>Photos (optional)</label><div class="x-rc">${(D.photos || []).map((p, i) => `<div class="ph"><img src="${esc(p.src || thumb(p, 300))}" alt="Photo ${i + 1}"><button type="button" data-xlpdel="${i}" aria-label="Remove photo">×</button></div>`).join('')}<button type="button" class="add" data-xlpadd>+ Photo</button></div></div>
+    </div></div><p class="x-ferr" id="xl-err"></p></div>
+    <div class="x-save"><div><button class="btn sec" data-x="${f.id ? 'ltrd' : 'letters'}">Cancel</button><button class="btn ok" id="xl-save">${f.id ? 'Save changes' : 'Save'}</button></div></div>`;
+  $('exp').scrollTop = 0;
+}
+async function xLtrSave(){
+  const f = X.lf, b = $('xl-save'); if ((f.data.photos || []).some(p => p.uploading)) { $('xl-err').textContent = 'Wait for the photo to finish uploading.'; return; }
+  b.disabled = true; b.textContent = 'Saving…';
+  const send = JSON.parse(JSON.stringify(f)); send.data.photos = (send.data.photos || []).filter(p => p.id).map(p => ({ id: p.id }));
+  if (f.kind === 'EOT') Object.assign(send.data, { daysClaimed: xLtrEot(f.data).days, newCompletion: xLtrEot(f.data).newDate });
+  try { const before = new Set((X.d.letters || []).map(l => l.id));
+    X.d = await server('expSaveLetter', send, X.pin); keep('exp.cache', X.d); toast('Saved');
+    const l = f.id ? X.d.letters.find(x => x.id === f.id) : X.d.letters.find(x => !before.has(x.id)); X.lf = null; xLtrDetail(l ? l.id : ''); }
+  catch (e) { $('xl-err').textContent = errText(e); b.disabled = false; b.textContent = 'Try again'; }
+}
+function xLtrDetail(id){
+  const l = (X.d.letters || []).find(x => x.id === id); if (!l) return xGo('letters');
+  X.view = 'ltrd'; X.ltrId = id; const K = XLTR[l.kind] || XLTR.LTR, mine = l.by === X.d.user.name || xIsAdmin();
+  xMain().innerHTML = `<div class="x-sp-head"><small>${esc(K.t.toUpperCase())} · ${esc(l.site)}</small><h2>${esc(l.subject)}</h2><div>${esc(l.no)} · ${dmy(l.date)}${l.to ? ' · to ' + esc(l.to) : ''}</div></div>
+    ${l.kind === 'EOT' ? `<div class="x-bal"><small>DAYS CLAIMED</small><b>${esc(l.data.daysClaimed || 0)}<span> days</span></b><div class="x-row"><div><i>Completion now</i>${l.data.origCompletion ? dmy(l.data.origCompletion) : '–'}</div><div><i>Requested</i>${l.data.newCompletion ? dmy(l.data.newCompletion) : '–'}</div></div></div>` : ''}
+    <div class="card"><div class="body"><p style="white-space:pre-wrap;margin:0">${esc(l.data.body || '')}</p></div></div>
+    ${mine ? `<div class="x-sec">Status: ${esc(l.status)}</div><div class="x-chips">${XLTR_ST.map(s => `<button type="button" class="${l.status === s ? 'on' : ''}" data-xlst="${s}">${s}</button>`).join('')}</div>` : ''}
+    <div class="x-save"><div><button class="btn sec" data-x="letters">Back</button>${mine ? `<button class="btn sec" data-xltredit>Edit</button>` : ''}<button class="btn" data-xltrprint>Print / WhatsApp</button></div></div>`;
+  $('exp').scrollTop = 0;
+}
+/* printout on the letterhead (A4) */
+function xLtrPrint(l){
+  const K = XLTR[l.kind] || XLTR.LTR, D = l.data || {}, s = xSite(l.site);
+  const rowsKV = rows => lhKV(rows.filter(r => r[1]));
+  const para = esc(D.body || '').split(/\n{2,}/).map(p => `<p style="margin:0 0 3mm;line-height:1.55">${p.replace(/\n/g, '<br>')}</p>`).join('');
+  const resp = ['NCR', 'WIR', 'RFI', 'VAR', 'EOT'].includes(l.kind) ? `<div class="lh-sec">Consultant's response</div>
+    <table class="lh-tb"><tr><td style="height:7mm">${l.kind === 'WIR' ? '☐ Approved – proceed &nbsp;&nbsp; ☐ Approved with comments &nbsp;&nbsp; ☐ Rejected – re-inspect' : l.kind === 'NCR' ? '☐ Corrective action accepted &nbsp;&nbsp; ☐ Not accepted &nbsp;&nbsp; ☐ NCR closed' : '☐ Approved &nbsp;&nbsp; ☐ Approved with comments &nbsp;&nbsp; ☐ Not approved'}</td></tr>
+      <tr><td style="height:12mm;vertical-align:top;color:#8a94a6">Comments:</td></tr><tr><td>Name / signature / date:</td></tr></table>` : '';
+  let extra = '';
+  if (l.kind === 'EOT') extra = `<div class="lh-sec">Delay events</div><table class="lh-tb"><tr><th>#</th><th>Delay event / cause</th><th>From</th><th>To</th><th class="n">Days</th></tr>
+      ${(D.events || []).filter(e => e.cause || e.days).map((e, i) => `<tr><td>${i + 1}</td><td>${esc(e.cause)}</td><td>${e.from ? dmy(e.from) : ''}</td><td>${e.to ? dmy(e.to) : ''}</td><td class="n">${esc(e.days)}</td></tr>`).join('')}</table>
+    ${lhTot([['Contract completion date', D.origCompletion ? dmy(D.origCompletion) : '–'], ['Extension claimed', (D.daysClaimed || 0) + ' days'], ['Revised completion date', D.newCompletion ? dmy(D.newCompletion) : '–', 'grand']])}`;
+  if (l.kind === 'NCR') extra = rowsKV([['Location / element', D.location], ['Severity', D.severity], ['Non-conformance', D.description], ['Spec. / drawing ref.', D.specRef], ['Root cause', D.rootCause],
+    ['Corrective action', D.corrective], ['Preventive action', D.preventive], ['To be closed by', D.target ? dmy(D.target) : ''], ["Consultant's NCR No.", D.consultantNcr]]);
+  if (l.kind === 'WIR') extra = rowsKV([['Work to inspect', D.element], ['Location / grid / level', D.location], ['Inspection date', D.inspDate ? dmy(D.inspDate) + (D.inspTime ? ' at ' + D.inspTime : '') : ''], ['Drawing ref.', D.drawingRef], ['Checks done', D.ready]]);
+  if (l.kind === 'RFI') extra = rowsKV([['Drawing / spec ref.', D.drawingRef], ['Reply needed by', D.neededBy ? dmy(D.neededBy) : '']]);
+  if (l.kind === 'VAR') extra = rowsKV([['Reason', D.reason], ['Instructed by', D.instructedBy], ['Instruction date', D.instructionDate ? dmy(D.instructionDate) : ''], ['Cost impact', D.cost ? 'AED ' + aed(D.cost) + ' (excl. VAT)' : ''], ['Time impact', D.days ? D.days + ' days' : '']]);
+  if (l.kind === 'DN') extra = rowsKV([['Delay since', D.since ? dmy(D.since) : ''], ['Caused by', D.cause], ['Expected delay', D.impact ? D.impact + ' days' : '']]);
+  const photos = (D.photos || []).filter(p => p.id).slice(0, 4);
+  lhPrint(K.t.toUpperCase(), [['Ref.', esc(l.no)], ['Date', dmy(l.date)], ['Project', esc(l.site)]],
+    `<div class="lh-grid"><div class="lh-card"><small>To</small><b>${esc(l.to || '')}</b>${D.attn ? `<div>Attn: ${esc(D.attn)}</div>` : ''}${D.cc ? `<div>CC: ${esc(D.cc)}</div>` : ''}</div>
+      <div class="lh-card"><small>Project</small><b>${esc(s.project || l.site)}</b><div>${esc([s.plot ? 'Plot ' + s.plot : '', s.location].filter(Boolean).join(', '))}</div><div>${s.client ? 'Client: ' + esc(s.client) : ''}</div></div></div>
+    <p style="margin:1mm 0 4mm;font-weight:700;color:#1F2A6B">Subject: ${esc(l.subject)}</p>
+    <p style="margin:0 0 3mm">Dear Sir,</p>${para}${extra}
+    ${photos.length ? `<div class="lh-sec">Photos</div><div style="display:grid;grid-template-columns:repeat(${Math.min(photos.length, 4)},1fr);gap:3mm">${photos.map(p => `<img src="${thumb(p, 600)}" style="width:100%;height:38mm;object-fit:cover;border-radius:2mm">`).join('')}</div>` : ''}
+    <p style="margin:5mm 0 0">Yours faithfully,</p>
+    ${lhSig([['For Al Tarwi Building Contracting', X.d.user.name], ['Received by', 'Name / signature / date']])}
+    ${resp}`, { mh: true });
+}
 /* printable statement of account (A4, letterhead) */
 function xStmtPrint(name){
   const L = xLedger(name), p = L.p, A = L.age;
@@ -4021,6 +4211,21 @@ $('exp').addEventListener('click', async e => {
       item: 'Payment on account', method: 'Bank transfer' };
     return xNew('EXPENSE'); }
   if (D.xstmtprint) return xStmtPrint(D.xstmtprint);
+  /* letters & reports */
+  if ('xltrnew' in D) return xLtrMenu();
+  if (D.xltrsitenew) { X.ltrSite = D.xltrsitenew; return xLtrMenu(); }
+  if (D.xltrsite && !D.xltrk) { X.ltrSite = D.xltrsite; return xLetters(); }
+  if (D.xltrk) return xLtrNew(D.xltrk, D.xltrsite || X.ltrSite || '');
+  if (D.xltr) return xLtrDetail(D.xltr);
+  if ('xltredit' in D) { const l = X.d.letters.find(x => x.id === X.ltrId); if (l) { X.lf = JSON.parse(JSON.stringify(l)); X.lf.data.photos = X.lf.data.photos || []; X.lf.data.events = X.lf.data.events || []; xLtrForm(); } return; }
+  if ('xltrprint' in D) { const l = X.d.letters.find(x => x.id === X.ltrId); if (l) xLtrPrint(l); return; }
+  if (D.xlst) { try { X.d = await server('expLetterStatus', X.ltrId, D.xlst, X.pin); keep('exp.cache', X.d); toast('Marked ' + D.xlst); xLtrDetail(X.ltrId); } catch (er) { toast(errText(er)); } return; }
+  if ('xleadd' in D && X.lf) { X.lf.data.events.push({ cause: '', from: '', to: '', days: '' }); xLtrForm(); return; }
+  if (D.xledel != null && X.lf) { X.lf.data.events.splice(+D.xledel, 1); xLtrForm(); return; }
+  if ('xlregen' in D && X.lf) { X.lf.data.body = xLtrText(X.lf); xLtrForm(); toast('Text written again from the details'); return; }
+  if ('xlpadd' in D && X.lf) { xLtrPhotoIn.click(); return; }
+  if (D.xlpdel != null && X.lf) { X.lf.data.photos.splice(+D.xlpdel, 1); xLtrForm(); return; }
+  if (b.id === 'xl-save') return xLtrSave();
   if (D.xpnl) { X.pnlSite = D.xpnl; return xPnlSite(D.xpnl); }
   if ('xpnlprint' in D) return D.xpnlprint ? xPnlSitePrint(D.xpnlprint) : xPnlPrint();
   if ('xsscan' in D) { X.sr = { party: X.suppName, lines: [] }; xStmtScan.click(); return; }
@@ -4240,6 +4445,17 @@ $('exp').addEventListener('input', e => {
     if (X.df.kind === 'INV' && (k === 'qty' || k === 'rate') && xr2(l.qty) && xr2(l.rate)) { l.amount = xr2(xr2(l.qty) * xr2(l.rate)).toFixed(2); const a = document.querySelector(`[data-xdl="${i}|amount"]`); if (a) a.value = l.amount; }
     xDocCalc(); return; }
   if (t.dataset.xp && X.pf) { X.pf[t.dataset.xp] = t.value; return; }
+  if (t.dataset.xltrf) { X[t.dataset.xltrf === 'site' ? 'ltrSite' : 'ltrKind'] = t.value; xLetters(); return; }
+  if (t.dataset.xlt && X.lf) { const f = X.lf, k = t.dataset.xlt; f[k] = t.value;
+    if (k === 'site') { f.to = xLtrRecip(f.kind, f.site) || f.to; f.subject = xLtrSubject(f); if (!f.id) f.data.body = xLtrText(f); xLtrForm(); }
+    return; }
+  if (t.dataset.xlf && X.lf) { X.lf.data[t.dataset.xlf] = t.value;
+    if (X.lf.kind === 'EOT' && $('xl-eot')) { const e = xLtrEot(X.lf.data); $('xl-eot').innerHTML = `Total claimed: <b>${e.days} days</b> · new completion date <b>${e.newDate ? dmy(e.newDate) : '–'}</b>`; }
+    return; }
+  if (t.dataset.xle && X.lf) { const [i, k] = t.dataset.xle.split('|'), ev = X.lf.data.events[+i]; ev[k] = t.value;
+    if ((k === 'from' || k === 'to') && ev.from && ev.to && !ev._daysTyped) { const n = xDaysBetween(ev.from, ev.to) + 1; if (n > 0) { ev.days = String(n); const el = document.querySelector(`[data-xle="${i}|days"]`); if (el) el.value = ev.days; } }
+    if (k === 'days') ev._daysTyped = true;
+    const e = xLtrEot(X.lf.data); if ($('xl-eot')) $('xl-eot').innerHTML = `Total claimed: <b>${e.days} days</b> · new completion date <b>${e.newDate ? dmy(e.newDate) : '–'}</b>`; return; }
   if (t.id === 'xpl-per') { X.pnlPer = t.value; if (X.view === 'pnld') xPnlSite(X.pnlSite); else xPnl(); return; }
   if ('xsuppq' in t.dataset) { X.suppQ = t.value; clearTimeout(X._sq); X._sq = setTimeout(() => { xSupp(); const q = document.querySelector('[data-xsuppq]'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 300); return; }
   if (t.id === 'xs-date') { if (t.value && t.value <= today()) { X.sumDate = t.value; xSum(); } return; }
