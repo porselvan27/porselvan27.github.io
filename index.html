@@ -1753,7 +1753,17 @@ function printHTML(r){
     return `<figure><img src="${src}" alt=""><figcaption>${esc(p.cap)}</figcaption></figure>`;
   }).join('') + '</div>';
   const info = [['Date', fmtDate(r.date)], ['Site', r.site], ['Engineer', r.eng], ['Reporting', r.tin], ['Leaving', r.tout]];
-  return `${prHead('DAILY SITE REPORT', esc(r.site) + ' · ' + esc(fmtDate(r.date)))}
+  /* modern footer bar on every page: no side margins (Chrome will not draw in them), the content is padded instead;
+     the repeating table footer keeps a blank strip at the bottom of each page so nothing runs under the bar */
+  return `<style>@page{size:A4 portrait;margin:9mm 0 0}
+    #sheet table.prt{width:100%;border-collapse:collapse}#sheet table.prt>tbody>tr>td{padding:0 9mm}#sheet table.prt>tfoot>tr>td{padding:0}
+    #sheet .prt-sp{height:17mm}
+    #sheet .lh-mf{position:fixed;left:0;right:0;bottom:0;background:linear-gradient(90deg,#1D7FD1,#38b6ff 40%,#1F2A6B);padding-top:1.1mm;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    #sheet .lh-mf-in{background:linear-gradient(120deg,#141c4d,#1F2A6B 55%,#22358a);color:#e8f0ff;display:flex;align-items:center;justify-content:space-between;gap:4mm;padding:3mm 12mm;font:500 8pt 'Segoe UI',Arial,sans-serif}
+    #sheet .lh-mf-in span{display:inline-flex;align-items:center;gap:1.4mm;white-space:nowrap}
+    #sheet .lh-mf-in .ar{font:600 8.4pt Tahoma,'Segoe UI',Arial;color:#cfe2ff}</style>
+  <table class="prt"><tbody><tr><td>
+  ${prHead('DAILY SITE REPORT', esc(r.site) + ' · ' + esc(fmtDate(r.date)))}
   <div class="p-info">${info.map(([k, v]) => `<div><b>${k}</b>${esc(v)}</div>`).join('')}</div>
   ${card('SUB CONTRACTOR LABOUR DETAILS', labour(r.sub, 'Name of contractor'), 'Skilled ' + sum(r.sub, 'skilled') + ' · Unskilled ' + sum(r.sub, 'unskilled'))}
   ${card('COMPANY LABOUR DETAILS', workers(r.co), coSum(r.co))}
@@ -1763,7 +1773,9 @@ function printHTML(r){
   ${card('WORK SUMMARY DETAILS', workBody)}
   ${photos.length ? card('SITE PHOTOS', photoBody, photos.length + (photos.length > 1 ? ' photos' : ' photo')) : ''}
   <div class="p-sign"><div>SIGNATURE OF ENGINEER</div></div>
-  <div class="p-foot">${esc(r.site)} · Daily Site Report · ${fmtDate(r.date)}</div>`;
+  <div class="p-foot">${esc(r.site)} · Daily Site Report · ${fmtDate(r.date)}</div>
+  </td></tr></tbody><tfoot><tr><td><div class="prt-sp"></div></td></tr></tfoot></table>
+  ${lhModernFoot()}`;
 }
 const printHere = () => { $('sheet').innerHTML = printHTML(cur); waitImages($('sheet')).then(() => print()); };
 /* PDF: Google builds the file with the photos embedded and saves it in Drive */
@@ -2738,7 +2750,7 @@ function prHead(title, sub){
 }
 /* modern footer bar (A5 vouchers): phone · address · TRN, Arabic address on the right */
 function lhModernFoot(){
-  const trn = (X.d && X.d.settings && X.d.settings.companyTrn) || '';
+  const trn = (X.d && X.d.settings && X.d.settings.companyTrn) || '100596544500003';   // default when Expenses is not open (Daily Site Report)
   const ic = p => `<svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="#7cc4ff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
   return `<div class="lh-mf"><div class="lh-mf-in">
     <span>${ic('<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/>')} 050 720 2796</span>
