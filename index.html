@@ -755,7 +755,7 @@ button.x-bk{text-align:left;border:0;cursor:pointer;font:inherit;color:inherit}
   </div>
   <nav class="x-nav" id="x-nav" hidden><button data-x="home" class="on">Home</button><button data-x="list">Entries</button></nav></div>
   <div class="x-main" id="x-main"></div>
-  <input type="file" id="x-photo" accept="image/*" hidden>
+  <input type="file" id="x-photo" accept="image/*,application/pdf" hidden>
 </section>
 <header>
   <div class="wrap top">
@@ -798,14 +798,14 @@ button.x-bk{text-align:left;border:0;cursor:pointer;font:inherit;color:inherit}
 
   <div class="card" id="c-rec"><h2>4 · MATERIALS RECEIVED</h2><div class="body">
     <label class="scan" for="scan-rec"><b>Scan delivery note</b><small>Take a photo – the items fill in by themselves</small></label>
-    <input type="file" id="scan-rec" accept="image/*" hidden>
+    <input type="file" id="scan-rec" accept="image/*,application/pdf" hidden>
     <div class="rows" id="rec"></div><button class="add" data-add="rec">+ Add received material</button>
     <p class="hint">Quantities go into Stock → Received automatically. Each delivery shows if its bill is in Expenses.</p>
     <div class="photos docs" id="docs-rec"></div></div></div>
 
   <div class="card" id="c-sent"><h2>5 · MATERIALS SENT OUT</h2><div class="body">
     <label class="scan" for="scan-sent"><b>Scan gate pass / delivery note</b><small>Take a photo – the items fill in by themselves</small></label>
-    <input type="file" id="scan-sent" accept="image/*" hidden>
+    <input type="file" id="scan-sent" accept="image/*,application/pdf" hidden>
     <div class="rows" id="sent"></div><button class="add" data-add="sent">+ Add sent-out material</button>
     <div class="photos docs" id="docs-sent"></div></div></div>
 
@@ -1118,6 +1118,11 @@ function renderPhotos(){
 }
 /* shrink a camera photo to at most 1600 px so it uploads quickly (documents: 2000 px, sharper) */
 function shrink(file, max = 1600, q = 0.75){
+  if (file && (file.type === 'application/pdf' || /\.pdf$/i.test(file.name || ''))) {   // PDF: sent as it is (bill, invoice, delivery note)
+    if (file.size > 15 * 1024 * 1024) return Promise.reject(new Error('That PDF is too big (over 15 MB)'));
+    return new Promise((res, rej) => { const r = new FileReader();
+      r.onload = () => res(String(r.result).replace(/^data:[^;]*;/, 'data:application/pdf;')); r.onerror = () => rej(new Error('Could not read that PDF')); r.readAsDataURL(file); });
+  }
   return new Promise((res, rej) => {
     const img = new Image();
     img.onload = () => {
@@ -2380,7 +2385,7 @@ function xForm(){
   const chips = (key, list) => `<div class="x-chips" data-xchip="${key}">${list.map(v => `<button type="button" class="${f[key] === v ? 'on' : ''}" data-v="${esc(v)}">${esc(v)}</button>`).join('')}</div>`;
   xMain().innerHTML = `<div class="x-form">
    <div class="card"><h2>${f.id ? 'EDIT ' + esc(f.voucher) : bl ? 'SUPPLIER / SUBCONTRACTOR BILL' : out ? 'NEW EXPENSE' : tr ? 'HAND OVER CASH' : rc ? 'ADVANCE RECOVERY' : cr ? 'CLIENT RECEIPT' : bk ? 'BANK ENTRY' : 'CASH RECEIVED'}</h2><div class="body">
-    ${out || bl ? '<button type="button" class="btn sec x-scanbtn" data-xscan="bill">Scan bill / receipt</button>' : cr && f.method === 'Cheque' ? '<button type="button" class="btn sec x-scanbtn" data-xscan="cheque">Scan cheque photo</button>' : ''}
+    ${out || bl ? '<button type="button" class="btn sec x-scanbtn" data-xscan="bill">Scan bill / receipt (photo or PDF)</button>' : cr && f.method === 'Cheque' ? '<button type="button" class="btn sec x-scanbtn" data-xscan="cheque">Scan cheque photo</button>' : ''}
     <div><label for="xf-amount">Amount (AED)</label><input id="xf-amount" class="x-amt" data-xi="amount" inputmode="decimal" value="${esc(f.amount || '')}" placeholder="0.00"></div>
     <div class="x-two"><div><label for="xf-date">Date</label><input type="date" id="xf-date" data-xi="date" value="${esc(f.date)}"></div>
       ${bl ? `<div><label for="xf-ref">Their bill / invoice no.</label><input id="xf-ref" data-xi="ref" value="${esc(f.ref || '')}"></div>`
@@ -2465,8 +2470,10 @@ function xLineSum(){
 }
 function xRc(){
   const f = X.f;
-  $('x-rc').innerHTML = f.receipts.map((p, i) => `<div class="ph${p.uploading ? ' up' : ''}"><img src="${esc(p.src || thumb(p, 300))}" alt="Receipt ${i + 1}"><button type="button" data-xdelrc="${i}" aria-label="Remove photo">×</button></div>`).join('')
-    + `<button type="button" class="add" data-xaddrc>+ Photo</button>`;
+  $('x-rc').innerHTML = f.receipts.map((p, i) => `<div class="ph${p.uploading ? ' up' : ''}">${/^data:application\/pdf/.test(p.src || '')
+      ? '<span style="display:grid;place-items:center;width:100%;height:100%;font:800 15px var(--f-display);color:#a93226;background:#fdecea">PDF</span>'
+      : `<img src="${esc(p.src || thumb(p, 300))}" alt="Receipt ${i + 1}">`}<button type="button" data-xdelrc="${i}" aria-label="Remove photo">×</button></div>`).join('')
+    + `<button type="button" class="add" data-xaddrc>+ Photo / PDF</button>`;
   xLive();
 }
 function xLive(){
@@ -3247,12 +3254,12 @@ async function xDocPrint(d){
 }
 
 /* ---------- scanning: bill / receipt -> expense form; cheque -> receipt form or cheque register ---------- */
-const xScanIn = Object.assign(document.createElement('input'), { type: 'file', accept: 'image/*', hidden: true });
+const xScanIn = Object.assign(document.createElement('input'), { type: 'file', accept: 'image/*,application/pdf', hidden: true });
 document.body.appendChild(xScanIn);
 xScanIn.onchange = async () => {
   const file = xScanIn.files[0]; xScanIn.value = ''; if (!file) return;
   const kind = X.scanKind, target = X.view === 'chqf' ? X.cf : X.f; if (!target) return;
-  const btn = document.querySelector(`.x-scanbtn[data-xscan="${kind}"]`), btnTxt = btn ? btn.textContent : ''; if (btn) { btn.disabled = true; btn.textContent = 'Reading the photo…'; }
+  const btn = document.querySelector(`.x-scanbtn[data-xscan="${kind}"]`), btnTxt = btn ? btn.textContent : ''; if (btn) { btn.disabled = true; btn.textContent = /pdf/i.test(file.type || file.name) ? 'Reading the PDF…' : 'Reading the photo…'; }
   try {
     const src = await shrink(file, 2000, 0.85), r = await server('expScan', src, kind, X.pin), o = r.data || {};
     const num2 = v => xr2(String(v == null ? '' : v).replace(/[^\d.]/g, ''));
@@ -3288,7 +3295,7 @@ xScanIn.onchange = async () => {
 };
 
 /* ---------- scan several cheques at once (e.g. a client's post-dated cheques) -> review list -> save all ---------- */
-const xScanMany = Object.assign(document.createElement('input'), { type: 'file', accept: 'image/*', multiple: true, hidden: true });
+const xScanMany = Object.assign(document.createElement('input'), { type: 'file', accept: 'image/*,application/pdf', multiple: true, hidden: true });
 document.body.appendChild(xScanMany);
 xScanMany.onchange = async () => {
   const files = [...xScanMany.files]; xScanMany.value = ''; if (!files.length) return;
