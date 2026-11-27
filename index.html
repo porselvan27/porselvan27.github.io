@@ -1899,7 +1899,9 @@ addEventListener('popstate', () => {
 /* =================== EXPENSES (Phase 1) =================== */
 const X = { pin: load('exp.pin', ''), d: load('exp.cache', null), view: 'home', f: null, filt: { month: '', site: '', cat: '', status: '', q: '' } };
 const XSRC = ['Online transfer from company account', 'ATM withdrawal', 'Cash from MD', 'Cash from client', 'Other'];
-const XPAY = ['Cash', 'Bank transfer', 'Cheque', 'Company card', 'Personal card / own pocket'];
+const XOWNTR = 'Transfer from my own account (company cash)';   // company cash in hand, sent from the person's own bank → out of their cash box
+const XPAY = ['Cash', XOWNTR, 'Bank transfer', 'Cheque', 'Company card', 'Personal card / own pocket'];
+const xCashLike = m => m === 'Cash' || m === XOWNTR;
 const aed = n => (+n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const dmy = d => d ? String(d).slice(0, 10).split('-').reverse().join('-') : '';
 const xr2 = v => Math.round((parseFloat(v) || 0) * 100) / 100;
@@ -2417,9 +2419,12 @@ function xForm(){
     ${bl ? `<p class="hint">No money moves now. The bill goes on <b>${esc(f.party || 'their')}</b> statement as money we owe, and counts in the site cost. Pay it later with <b>I paid for something</b> → tick <b>Pays a bill already entered</b>.</p>` : `
     ${f.party ? `<label class="x-tog"><input type="checkbox" data-xi="onAcct" ${f.onAcct ? 'checked' : ''}> Pays a bill already entered (supplier account) – not a new cost</label>` : ''}
     <div><label>Payment method</label>${chips('method', XPAY)}</div>
+    ${f.method === XOWNTR ? `<div><label for="xf-ref">Transfer reference (your bank)</label><input id="xf-ref" data-xi="ref" value="${esc(f.ref || '')}" placeholder="e.g. ADCB ref / screenshot no."></div>
+      <p class="hint">Use this when you paid with the <b>company cash you hold</b>, by depositing it in your own account and transferring. It comes out of your cash box – not the company bank, and not "own pocket".</p>` : ''}
     ${/^(Bank transfer|Company card)$/.test(f.method) ? bankSel('Paid from account') + `<div><label for="xf-ref">Bank reference</label><input id="xf-ref" data-xi="ref" value="${esc(f.ref || '')}"></div>` : ''}
     ${f.method === 'Cheque' ? '<button type="button" class="btn sec x-scanbtn" data-xscan="cheque">Scan the cheque you wrote</button>' + bankSel('Cheque from account') + chqFields() + '<p class="hint">The cheque goes to the cheque register; the bank balance changes when it is <b>Cleared</b>.</p>' : ''}
-    ${/own pocket/.test(f.method) ? '<p class="hint">Paid from your own pocket – it goes on the "to reimburse" list and is not taken from the cash box.</p>' : ''}`}
+    ${f.method === 'Bank transfer' ? '<p class="hint"><b>Company bank account only.</b> If you used the company cash you hold and sent it from your own account, choose <b>Transfer from my own account (company cash)</b>.</p>' : ''}
+    ${/own pocket/.test(f.method) ? '<p class="hint">Only for <b>your own money</b> – it goes on the "to reimburse" list and the company pays you back. If you used company cash, choose <b>Cash</b> or <b>Transfer from my own account (company cash)</b>.</p>' : ''}`}
     ${showVeh ? `<div class="x-two"><div><label for="xf-veh">Vehicle</label><select id="xf-veh" data-xi="vehicle">${opt('', 'Choose…', f.vehicle)}${d.vehicles.map(v => opt(v, v, f.vehicle)).join('')}</select></div>
       ${/Fuel/.test(f.cat) ? `<div><label for="xf-odo">Odometer (km)</label><input id="xf-odo" data-xi="odo" inputmode="numeric" value="${esc(f.odo || '')}"></div>` : '<div></div>'}</div>` : ''}
     ${showStaff ? `<div><label for="xf-staff">Staff member</label><input id="xf-staff" data-xi="staff" list="x-staff" value="${esc(f.staff || '')}"></div>` : ''}
@@ -2875,7 +2880,7 @@ async function xVoucher(t){
       <div style="text-align:right"><small>Amount</small><b>AED ${aed(t.amount)}</b></div></div>
     ${lhKV([['Being', [t.item, t.desc].filter(Boolean).join(' – ') || t.cat || t.remarks || ''],
       ['Project', cr || out ? [s.project, s.plot, s.client && out ? '' : ''].filter(Boolean).join(' · ') : ''],
-      ['Category', out ? t.cat : ''], ['Payment', pay], ['Cash box', (out || cr) && t.method !== 'Cash' ? '' : t.box],
+      ['Category', out ? t.cat : ''], ['Payment', pay], ['Cash box', (out || cr) && !xCashLike(t.method) ? '' : t.box],
       ['VAT invoice', t.vat ? 'Net ' + aed(t.net) + ' + VAT ' + aed(t.vatAmt) + (t.trn ? ' · Supplier TRN ' + t.trn : '') : ''],
       ['Qty × rate', t.qty ? t.qty + ' ' + t.unit + ' × ' + aed(t.rate) : ''], ['Vehicle', t.vehicle], ['Staff', t.staff], ['Remarks', t.remarks && (t.item || t.desc) ? t.remarks : '']])}
     ${lines}
@@ -3418,6 +3423,7 @@ function xWhatHappens(f){
   } else if (f.type === 'EXPENSE') {
     const cat = X.d.cats.find(c => c.name === f.cat), md = amt > s.approvalLimit || (cat && cat.md);
     if (f.method === 'Cash') L.push(`${A} comes out of <b>${esc(box || 'your')}</b> cash box.`);
+    else if (f.method === XOWNTR) L.push(`${A} comes out of <b>${esc(box || 'your')}</b> cash box (company cash you sent from your own bank account). The company bank does not change.`);
     else if (/own pocket/.test(f.method)) L.push(`Goes on the <b>paid from own pocket</b> list until it is paid back to you.`);
     else if (f.method === 'Cheque') L.push(`Cheque ${esc(f.chqNo || '')} goes to the <b>cheque register</b>; ${esc(f.bank || 'the bank')} goes down when it is marked Cleared.`);
     else L.push(`${A} comes out of <b>${esc(f.bank || 'the bank')}</b>.`);
