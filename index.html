@@ -538,7 +538,7 @@ body.at-exp{overflow:hidden}body.at-exp .bar{display:none!important}
 .x-big button{border:0;border-radius:20px;padding:20px 12px;color:#fff;font:700 16px var(--f-display);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px;box-shadow:0 14px 28px -14px #0008;transition:transform .2s var(--ease)}
 .x-big button:active{transform:scale(.96)}
 .x-big button::before{content:"+";width:42px;height:42px;border-radius:50%;background:#ffffff2b;font:300 30px/40px var(--f-body)}
-.x-big .out{background:linear-gradient(135deg,#d9622b,#f5a524)}.x-big .in{background:linear-gradient(135deg,#17734a,#2fae6f)}
+.x-big .out{background:linear-gradient(135deg,#d9622b,#f5a524)}.x-big .in{background:linear-gradient(135deg,#17734a,#2fae6f)}.x-big .rq{background:linear-gradient(135deg,#0b2a5b,#1d64c4)}
 .x-big [data-xscanbill]{background:linear-gradient(135deg,#0b2a5b,#1d64c4)}
 .x-big [data-xscanbill]::before{content:"";background:var(--i-file) center/22px no-repeat,#ffffff2b}
 .x-big small{font:500 12px var(--f-body);opacity:.85;margin-top:-4px}
@@ -567,7 +567,7 @@ details.x-fold>div{padding:0 12px 12px}
 .x-it{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--line);cursor:pointer;width:100%;background:none;border-left:0;border-right:0;border-top:0;text-align:left;color:inherit;font:inherit}
 .x-it:last-child{border-bottom:0}.x-it:hover{background:var(--pill)}
 .x-it .ic{width:38px;height:38px;border-radius:12px;flex:none;display:grid;place-items:center;font:700 13px var(--f-display);color:#fff;background:#d9622b}
-.x-it .ic.in{background:#17734a}.x-it .ic.tr{background:#5d6a7e}
+.x-it .ic.in{background:#17734a}.x-it .ic.tr{background:#5d6a7e}.x-it .ic.rq{background:#b9770e}
 .x-it .t{flex:1;min-width:0}.x-it .t b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px}
 .x-it .t small{color:var(--muted);font-size:12px}
 .x-it .a{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -2610,6 +2610,9 @@ function xAlerts(){
       s: due.slice(0, 3).map(c => (c.dir === 'Issued' ? 'to ' : 'from ') + c.party + ' ' + aed(c.amount) + ' (' + dmy(c.date) + ')').join(' · ') });
     const old = (d.docs || []).filter(x => x.kind === 'INV' && /Unpaid|Part/.test(xDocState(x)) && xAge(x.date) >= 30);
     if (old.length) a.push({ go: 'docs', lvl: 'bad', t: `${old.length} tax invoice${old.length > 1 ? 's' : ''} unpaid for 30+ days`, s: 'AED ' + aed(old.reduce((s, x) => s + x.total - xDocPaid(x), 0)) + ' to collect' });
+    const wait = (d.docs || []).filter(x => x.kind === 'REQ' && /^(Submitted|Approved)$/.test(xDocState(x)) && (xDocState(x) === 'Approved' || xAge(x.date) >= 14));
+    if (wait.length) a.push({ go: 'docs', t: `${wait.length} payment request${wait.length > 1 ? 's' : ''} need follow-up`,
+      s: wait.slice(0, 3).map(x => x.no + (xDocState(x) === 'Approved' ? ' approved – make certificate' : ' no answer for ' + xAge(x.date) + ' days')).join(' · ') });
   }
   if (box && !/^TEST/i.test(box) && t0 >= (d.settings.goLive || '') && !(d.counts || []).some(c => c.box === box && c.date === t0))
     a.push({ go: 'count', t: 'Cash not counted today', s: 'Count ' + box + ' before you finish the day' });
@@ -3133,10 +3136,16 @@ function xChqPrint(){
 
 /* ---------- interim payment certificates & tax invoices ---------- */
 const xDocPaid = d => xr2(X.d.txns.filter(t => t.type === 'CLIENT RECEIPT' && xLiveTx(t) && t.invNo === d.no).reduce((s, t) => s + t.amount, 0));
-const xDocState = d => d.status === 'Cancelled' ? 'Cancelled' : d.kind === 'CERT' ? 'Issued' : (p => p >= d.total - 0.01 ? 'Paid' : p > 0 ? 'Part paid' : 'Unpaid')(xDocPaid(d));
+/* payment request (REQ) = Interim Payment Application to the client, built from progress; once approved it becomes the certificate (CERT) */
+const xReqCert = d => (X.d.docs || []).find(x => x.kind === 'CERT' && x.status !== 'Cancelled' && x.site === d.site && x.data.reqNo === d.no);
+const xDocState = d => d.status === 'Cancelled' ? 'Cancelled' : d.kind === 'REQ' ? (xReqCert(d) ? 'Certified' : d.status || 'Draft') : d.kind === 'CERT' ? 'Issued' : (p => p >= d.total - 0.01 ? 'Paid' : p > 0 ? 'Part paid' : 'Unpaid')(xDocPaid(d));
+const xDocCls = st => /^(Paid|Approved|Certified)$/.test(st) ? 'Approved' :st === 'Cancelled' ? 'Cancelled' : st === 'Rejected' ? 'Rejected' : /Issued|Submitted/.test(st) ? 'Confirmed' : 'Pending';
+const xDocTag = k => k === 'CERT' ? 'IPC' : k === 'REQ' ? 'IPA' : 'INV';
+const xDocName = k => k === 'CERT' ? 'Payment certificate' : k === 'REQ' ? 'Payment request' : 'Tax invoice';
+const xIsVal = k => k === 'CERT' || k === 'REQ';   // valuation documents (work done − retention − advance − previous)
 function xDocNextNo(kind, site){
   const used = new Set((X.d.docs || []).filter(d => d.kind === kind).map(d => d.no));
-  for (let i = 1; i < 999; i++) { const no = kind === 'CERT' ? 'IPC-' + site + '-' + xPad(i, 2) : site + '-' + xPad(i, 3); if (!used.has(no)) return no; }
+  for (let i = 1; i < 999; i++) { const no = kind === 'CERT' ? 'IPC-' + site + '-' + xPad(i, 2) : kind === 'REQ' ? 'IPA-' + site + '-' + xPad(i, 2) : site + '-' + xPad(i, 3); if (!used.has(no)) return no; }
   return '';
 }
 function xDocs(){
@@ -3146,11 +3155,11 @@ function xDocs(){
   xMain().innerHTML = `${sites.length > 1 ? `<div class="seg">${[''].concat(sites).map(s => `<button class="${s === site ? 'on' : ''}" data-xdocs="${esc(s)}">${s || 'All sites'}</button>`).join('')}</div>` : ''}
     <div class="x-tot"><span>Invoiced AED ${aed(totInv)}</span><span style="color:var(--ok)">Received ${aed(totPaid)}</span><span style="color:var(--danger)">Due ${aed(totInv - totPaid)}</span></div>
     <div class="x-list">${docs.map(d => { const st = xDocState(d);
-      return `<button class="x-it${d.status === 'Cancelled' ? ' cx' : ''}" data-xdoc="${esc(d.id)}"><span class="ic ${d.kind === 'CERT' ? 'tr' : st === 'Paid' ? 'in' : ''}">${d.kind === 'CERT' ? 'IPC' : 'INV'}</span>
-        <span class="t"><b>${esc(d.no)} · ${esc(d.kind === 'CERT' ? 'Payment certificate' : 'Tax invoice')}</b><small>${esc(d.site)} · ${dmy(d.date)}${d.kind === 'CERT' && d.data.pct ? ' · work done ' + d.data.pct + '%' : ''}</small><br>
-        <span class="x-st ${st === 'Paid' ? 'Approved' : st === 'Cancelled' ? 'Cancelled' : st === 'Issued' ? 'Confirmed' : 'Pending'}">${st}</span></span>
-        <span class="a">${aed(d.total)}</span></button>`; }).join('') || '<div class="empty">No certificates or tax invoices yet.</div>'}</div>
-    <div class="x-save"><div><button class="btn sec" data-x="home">Back</button>${xIsAdmin() ? `<button class="btn sec" data-xdocnew="CERT">New certificate</button><button class="btn" data-xdocnew="INV">New tax invoice</button>` : ''}</div></div>`;
+      return `<button class="x-it${d.status === 'Cancelled' ? ' cx' : ''}" data-xdoc="${esc(d.id)}"><span class="ic ${d.kind === 'CERT' ? 'tr' : d.kind === 'REQ' ? 'rq' : st === 'Paid' ? 'in' : ''}">${xDocTag(d.kind)}</span>
+        <span class="t"><b>${esc(d.no)} · ${esc(xDocName(d.kind))}</b><small>${esc(d.site)} · ${dmy(d.date)}${xIsVal(d.kind) && d.data.pct ? ' · work done ' + d.data.pct + '%' : ''}</small><br>
+        <span class="x-st ${xDocCls(st)}">${st}</span></span>
+        <span class="a">${aed(d.total)}</span></button>`; }).join('') || '<div class="empty">No payment requests, certificates or tax invoices yet.</div>'}</div>
+    <div class="x-save"><div><button class="btn sec" data-x="home">Back</button>${xIsAdmin() ? `<button class="btn sec" data-xreqnew="${esc(site)}">Payment request</button><button class="btn sec" data-xdocnew="CERT">Certificate</button><button class="btn" data-xdocnew="INV">Tax invoice</button>` : ''}</div></div>`;
 }
 /* the valuation of a certificate: everything to date, less what was certified before */
 function xCertCalc(f){
@@ -3173,7 +3182,12 @@ function xInvCalc(f){
 }
 function xDocNew(kind, from){
   const site = from ? from.site : X.docSite || '', s = xSite(site);
-  if (kind === 'CERT') {
+  if (kind === 'CERT' && from && from.kind === 'REQ') {        // approved payment request -> certificate with the same work items
+    const R = JSON.parse(JSON.stringify(from.data));
+    X.df = { kind, site, no: xDocNextNo('CERT', site), date: today(), period: R.period || today(), contract: R.contract, variations: R.variations, pct: R.pct,
+      lines: R.lines || [], retPct: R.retPct, advance: R.advance, advRec: R.advRec, advRecEdit: !!R.advRecEdit, prev: '', vatPct: R.vatPct, notes: '', reqNo: from.no };
+    xDocPrev();
+  } else if (kind === 'CERT') {
     X.df = { kind, site, no: site ? xDocNextNo('CERT', site) : '', date: today(), period: today(), contract: s.contract || '', variations: s.variations || '', pct: '',
       lines: [], retPct: s.retention === '' || s.retention == null ? X.d.settings.retention : s.retention, advance: s.advance || '', advRec: '', advRecEdit: false, prev: '', vatPct: X.d.settings.vatRate || 5, notes: '' };
     xDocPrev();
@@ -3186,8 +3200,25 @@ function xDocNew(kind, from){
   }
   X.view = 'docf'; xDocForm();
 }
+/* payment request: one line per programme activity – value = revised contract × weight, % done from the Progress tab */
+function xReqLines(f){
+  const sc = xSch(f.site), rev = xr2(f.contract) + xr2(f.variations);
+  if (!sc || !sc.items.length) return [];
+  const W = sc.items.reduce((a, it) => a + (+it.w || 0), 0) || 1; let left = xr2(rev);
+  return sc.items.filter(it => +it.w > 0).map((it, i, arr) => { const v = i === arr.length - 1 ? left : xr2(rev * it.w / W); left = xr2(left - v);
+    return { desc: it.name, value: String(v), pct: String(+it.pct || 0), w: it.w }; });
+}
+function xReqNew(site){
+  site = site || X.docSite || ''; const s = xSite(site);
+  X.df = { kind: 'REQ', site, no: site ? xDocNextNo('REQ', site) : '', date: today(), period: today(), contract: s.contract || '', variations: s.variations || '', pct: '',
+    lines: [], retPct: s.retention === '' || s.retention == null ? X.d.settings.retention : s.retention, advance: s.advance || '', advRec: '', advRecEdit: false, prev: '', vatPct: X.d.settings.vatRate || 5,
+    notes: 'Kindly inspect the works and certify this application for payment.' };
+  X.df.lines = xReqLines(X.df);
+  if (!X.df.lines.length && xSch(site) == null && site) { const c = xSiteMoney(site).cert; X.df.pct = c ? String(c.data.pct || '') : ''; }
+  xDocPrev(); X.view = 'docf'; xDocForm();
+}
 function xDocPrev(){   // previously certified = net to date on the latest earlier certificate of the site
-  const f = X.df; if (f.kind !== 'CERT') return;
+  const f = X.df; if (!xIsVal(f.kind)) return;
   const p = (X.d.docs || []).filter(d => d.kind === 'CERT' && d.site === f.site && d.status !== 'Cancelled' && d.id !== f.id && (d.data.period || d.date) <= (f.period || f.date))
     .sort((a, b) => (a.data.period || a.date).localeCompare(b.data.period || b.date) || a.no.localeCompare(b.no)).pop();
   f.prev = p ? String(p.data.netToDate) : '0'; f.prevNo = p ? p.no : '';
@@ -3198,14 +3229,16 @@ function xDocEdit(id){
   X.view = 'docf'; xDocForm();
 }
 function xDocForm(){
-  const f = X.df, cert = f.kind === 'CERT', opt = (v, l, cur) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(l)}</option>`;
+  const f = X.df, cert = xIsVal(f.kind), req = f.kind === 'REQ', opt =(v, l, cur) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(l)}</option>`;
   const inp = (k, l, more, ph) => `<div><label for="xd-${k}">${l}</label><input id="xd-${k}" data-xd="${k}" value="${esc(f[k] == null ? '' : f[k])}" ${more || ''} placeholder="${esc(ph || '')}"></div>`;
   const ln = (f.lines || []).map((l, i) => cert
     ? `<div class="x-ln"><input data-xdl="${i}|desc" value="${esc(l.desc)}" placeholder="Work item, e.g. Substructure" aria-label="Item"><input data-xdl="${i}|value" inputmode="decimal" value="${esc(l.value)}" placeholder="Value" aria-label="Contract value"><input data-xdl="${i}|pct" inputmode="decimal" value="${esc(l.pct)}" placeholder="% done" aria-label="Percent done"><button type="button" data-xdldel="${i}" aria-label="Remove line">×</button></div>`
     : `<div class="x-ln inv"><input data-xdl="${i}|desc" value="${esc(l.desc)}" placeholder="Description" aria-label="Description"><input data-xdl="${i}|qty" inputmode="decimal" value="${esc(l.qty)}" placeholder="Qty" aria-label="Qty"><input data-xdl="${i}|unit" value="${esc(l.unit)}" placeholder="Unit" aria-label="Unit"><input data-xdl="${i}|rate" inputmode="decimal" value="${esc(l.rate)}" placeholder="Rate" aria-label="Rate"><input data-xdl="${i}|amount" inputmode="decimal" value="${esc(l.amount)}" placeholder="Amount" aria-label="Amount"><button type="button" data-xdldel="${i}" aria-label="Remove line">×</button></div>`).join('');
-  xMain().innerHTML = `<div class="x-form"><div class="card"><h2>${f.id ? 'EDIT ' + esc(f.no) : cert ? 'NEW PAYMENT CERTIFICATE' : 'NEW TAX INVOICE'}</h2><div class="body">
+  xMain().innerHTML = `<div class="x-form"><div class="card"><h2>${f.id ? 'EDIT ' + esc(f.no) : req ? 'NEW PAYMENT REQUEST' : cert ? 'NEW PAYMENT CERTIFICATE' : 'NEW TAX INVOICE'}</h2><div class="body">
+      ${req ? `<p class="hint" style="margin-top:0">Interim Payment Application to the client / consultant. ${(f.lines || []).some(l => l.w) ? 'Work items and % done come from the project’s Progress tab' + (xr2(f.contract) ? '' : ' – <b>enter the contract value</b> to price them') + '.' : 'No programme for this project – type the overall % done, or split by work items.'}</p>` : ''}
+      ${f.reqNo ? `<p class="hint" style="margin-top:0">From payment request <b>${esc(f.reqNo)}</b> – change the % or amounts to what the consultant approved.</p>` : ''}
       <div class="x-two"><div><label for="xd-site">Site</label><select id="xd-site" data-xd="site">${opt('', 'Choose…', f.site)}${X.d.sites.map(s => opt(s.code, s.code + (s.client ? ' – ' + s.client : ''), f.site)).join('')}</select></div>
-        ${inp('no', cert ? 'Certificate No.' : 'Invoice No.')}</div>
+        ${inp('no', req ? 'Application No.' : cert ? 'Certificate No.' : 'Invoice No.')}</div>
       <div class="x-two">${inp('date', 'Date', 'type="date"')}${cert ? inp('period', 'Work done up to', 'type="date"') : inp('certNo', 'Certificate ref. (optional)')}</div>
       ${cert ? `
       <div class="x-two">${inp('contract', 'Contract value (AED)', 'inputmode="decimal"')}${inp('variations', 'Approved variations (AED)', 'inputmode="decimal"')}</div>
@@ -3214,6 +3247,7 @@ function xDocForm(){
       <button type="button" class="btn sec" data-xdladd style="justify-self:start">${(f.lines || []).length ? '+ Item' : 'Split by work items instead'}</button>
       <div class="x-two">${inp('retPct', 'Retention %', 'inputmode="decimal"')}${inp('advance', 'Advance paid by client (AED)', 'inputmode="decimal"')}</div>
       <div class="x-two">${inp('advRec', 'Advance recovered to date (AED)', 'inputmode="decimal"', 'auto: pro rata')}${inp('prev', 'Previously certified (AED)', 'inputmode="decimal"')}</div>
+      ${req && xSch(f.site) ? `<button type="button" class="btn sec" data-xreqre style="justify-self:start">Refresh items from Progress</button>` : ''}
       <p class="hint">${f.prevNo ? 'Previously certified is taken from ' + esc(f.prevNo) + '. ' : ''}Advance recovery is worked out pro rata to work done unless you type it.</p>`
       : `
       ${inp('client', 'Client (bill to)')}
@@ -3223,7 +3257,7 @@ function xDocForm(){
       <button type="button" class="btn sec" data-xdladd style="justify-self:start">+ Line</button>
       <div class="x-two">${inp('retPct', 'Less retention %', 'inputmode="decimal"', '0')}${inp('advRec', 'Less advance recovery (AED)', 'inputmode="decimal"', '0')}</div>`}
       <div class="x-two">${inp('vatPct', 'VAT %', 'inputmode="decimal"')}<div></div></div>
-      ${inp('notes', 'Notes (printed)', '', cert ? 'e.g. Subject to consultant site inspection' : 'e.g. Payment 3 as per payment schedule')}
+      ${inp('notes', 'Notes (printed)', '', req ? 'e.g. Kindly certify for payment' : cert ? 'e.g. Subject to consultant site inspection' : 'e.g. Payment 3 as per payment schedule')}
     </div></div>
     <div class="card"><h2>${cert ? 'VALUATION' : 'TOTAL'}</h2><div class="body" id="xd-calc"></div></div>
     <p class="x-ferr" id="x-ferr"></p></div>
@@ -3233,10 +3267,10 @@ function xDocForm(){
 function xDocCalc(){
   const f = X.df, el = $('xd-calc'); if (!f || !el) return;
   const r = (k, v, c) => `<div class="x-vrow ${c || ''}"><span>${k}</span><b>${v}</b></div>`;
-  if (f.kind === 'CERT') { const c = xCertCalc(f);
+  if (xIsVal(f.kind)) { const c = xCertCalc(f);
     el.innerHTML = r('Revised contract value', aed(c.revised)) + r('Work done to date (' + c.pct + '%)', aed(c.workDone)) + r('Less retention ' + xr2(f.retPct) + '%', '−' + aed(c.retention), 'neg')
       + r('Less advance recovery', '−' + aed(c.advRec), 'neg') + r('Net certified to date', aed(c.netToDate)) + r('Less previously certified', '−' + aed(c.prev), 'neg')
-      + r('Due this certificate', aed(c.due)) + r('VAT ' + xr2(f.vatPct) + '%', aed(c.vat)) + r('Total due', 'AED ' + aed(c.total), 'grand');
+      + r(f.kind === 'REQ' ? 'Amount applied this time' : 'Due this certificate', aed(c.due)) + r('VAT ' + xr2(f.vatPct) + '%', aed(c.vat)) + r('Total due', 'AED ' + aed(c.total), 'grand');
     if (!f.advRecEdit && $('xd-advRec') && document.activeElement !== $('xd-advRec')) $('xd-advRec').value = c.advRec ? c.advRec.toFixed(2) : '';
   } else { const c = xInvCalc(f);
     el.innerHTML = r('Gross amount', aed(c.gross)) + (c.retention ? r('Less retention ' + xr2(f.retPct) + '%', '−' + aed(c.retention), 'neg') : '') + (c.advRec ? r('Less advance recovery', '−' + aed(c.advRec), 'neg') : '')
@@ -3245,29 +3279,60 @@ function xDocCalc(){
 function xDocDetail(id){
   const d = (X.d.docs || []).find(x => x.id === id); if (!d) return;
   X.view = 'doc'; X.docId = id;
-  const cert = d.kind === 'CERT', st = xDocState(d), paid = xDocPaid(d), D = d.data;
+  const cert = d.kind === 'CERT', req = d.kind === 'REQ', val = cert || req, st = xDocState(d), paid = xDocPaid(d), D = d.data;
   const rec = X.d.txns.filter(t => t.type === 'CLIENT RECEIPT' && xLiveTx(t) && t.invNo === d.no);
   const inv = cert ? (X.d.docs || []).find(x => x.kind === 'INV' && x.data.certNo === d.no && x.status !== 'Cancelled') : null;
+  const rc = req ? xReqCert(d) : null, fromReq = cert && D.reqNo ? (X.d.docs || []).find(x => x.kind === 'REQ' && x.no === D.reqNo && x.site === d.site) : null;
+  const link = x => `<button class="x-link" data-xdoc="${esc(x.id)}" style="background:none;border:0;padding:0;color:var(--brand,#1D7FD1);font:inherit;text-decoration:underline;cursor:pointer">${esc(x.no)}</button>`;
+  const live = d.status !== 'Cancelled', canEdit = live && (!req || /Draft|Submitted/.test(d.status || 'Draft')) && !rc;
+  const reqBtns = !req || !live || rc ? '' : ({ Draft: `<button class="btn" data-xreqst="${esc(d.id)}|Submitted">Mark sent</button>`,
+    Submitted: `<button class="btn sec" data-xreqst="${esc(d.id)}|Rejected" style="color:var(--danger)">Rejected</button><button class="btn ok" data-xreqst="${esc(d.id)}|Approved">Approved</button>`,
+    Approved: `<button class="btn ok" data-xreqcert="${esc(d.id)}">Make certificate</button>`,
+    Rejected: `<button class="btn sec" data-xreqst="${esc(d.id)}|Draft">Back to draft</button>` }[d.status || 'Draft'] || '');
   xMain().innerHTML = `<div class="card"><div class="body">
-      <div class="hint">${cert ? 'Interim payment certificate' : 'Tax invoice'} · ${esc(d.site)} · ${dmy(d.date)}</div>
+      <div class="hint">${req ? 'Interim payment application' : cert ? 'Interim payment certificate' : 'Tax invoice'} · ${esc(d.site)} · ${dmy(d.date)}</div>
       <div class="x-big-amt">AED ${aed(d.total)}</div>
-      <span class="x-st ${st === 'Paid' ? 'Approved' : st === 'Cancelled' ? 'Cancelled' : st === 'Issued' ? 'Confirmed' : 'Pending'}">${esc(d.no)} · ${st}</span>
-      <dl class="x-dl" style="margin-top:14px">${cert ? `<dt>Work done</dt><dd>${aed(D.workDone)} (${D.pct}%)</dd><dt>Net to date</dt><dd>${aed(D.netToDate)}</dd><dt>Previously certified</dt><dd>${aed(D.prev)}</dd><dt>Due (excl. VAT)</dt><dd>${aed(D.due)}</dd>`
+      <span class="x-st ${xDocCls(st)}">${esc(d.no)} · ${st}</span>
+      ${req ? `<p class="hint" style="margin:10px 0 0">${{ Draft: 'Print or share it with the client / consultant, then tap <b>Mark sent</b>.', Submitted: 'Waiting for the consultant. When they reply, tap <b>Approved</b> or <b>Rejected</b>.', Approved: 'Approved – tap <b>Make certificate</b>: it becomes the payment certificate and the tax invoice.', Rejected: 'Rejected – put it back to draft to change it, or make a new request.', Certified: 'Done – the certificate below was made from this request.' }[st] || ''}</p>` : ''}
+      <dl class="x-dl" style="margin-top:14px">${val ? `<dt>Work done</dt><dd>${aed(D.workDone)} (${D.pct}%)</dd><dt>Net to date</dt><dd>${aed(D.netToDate)}</dd><dt>Previously certified</dt><dd>${aed(D.prev)}</dd><dt>${req ? 'Applied' : 'Due'} (excl. VAT)</dt><dd>${aed(D.due)}</dd>`
         : `<dt>Bill to</dt><dd>${esc(D.client || '')}</dd><dt>Taxable</dt><dd>${aed(D.taxable)}</dd><dt>VAT</dt><dd>${aed(D.vat)}</dd><dt>Received</dt><dd>${aed(paid)}</dd><dt>Balance</dt><dd>${aed(d.total - paid)}</dd>`}
-        ${inv ? `<dt>Tax invoice</dt><dd>${esc(inv.no)}</dd>` : ''}</dl>
+        ${inv ? `<dt>Tax invoice</dt><dd>${link(inv)}</dd>` : ''}${rc ? `<dt>Certificate</dt><dd>${link(rc)} · AED ${aed(rc.total)}</dd>` : ''}${fromReq ? `<dt>Payment request</dt><dd>${link(fromReq)} · AED ${aed(fromReq.total)}</dd>` : ''}</dl>
       ${rec.length ? `<div class="x-sec">Payments received</div><div class="x-list">${rec.map(xRow).join('')}</div>` : ''}
     </div></div>
     <div class="x-save"><div><button class="btn sec" data-x="docs">Back</button><button class="btn sec" data-xdocprint="${esc(d.id)}">Print</button>
-      ${xIsAdmin() && d.status !== 'Cancelled' ? `<button class="btn sec" data-xdocedit="${esc(d.id)}">Edit</button><button class="btn sec" data-xdoccancel="${esc(d.id)}" style="color:var(--danger)">Cancel</button>
-        ${cert && !inv ? `<button class="btn" data-xdocinv="${esc(d.id)}">Make tax invoice</button>` : ''}${!cert && st !== 'Paid' ? `<button class="btn ok" data-xdocrec="${esc(d.id)}">Record payment</button>` : ''}` : ''}</div></div>`;
+      ${xIsAdmin() && live ? `${canEdit ? `<button class="btn sec" data-xdocedit="${esc(d.id)}">Edit</button>` : ''}${!rc ? `<button class="btn sec" data-xdoccancel="${esc(d.id)}" style="color:var(--danger)">Cancel</button>` : ''}${reqBtns}
+        ${cert && !inv ? `<button class="btn" data-xdocinv="${esc(d.id)}">Make tax invoice</button>` : ''}${!val && st !== 'Paid' ? `<button class="btn ok" data-xdocrec="${esc(d.id)}">Record payment</button>` : ''}` : ''}</div></div>`;
   $('exp').scrollTop = 0;
 }
 async function xDocPrint(d){
-  const s = xSite(d.site), D = d.data, cert = d.kind === 'CERT', st = X.d.settings;
+  const s = xSite(d.site), D = d.data, cert = xIsVal(d.kind), req = d.kind === 'REQ', st = X.d.settings;
   const proj = [s.project, s.plot ? 'Plot ' + s.plot : '', s.location].filter(Boolean).join(' · ');
+  if (req) {
+    const lines = (D.lines || []).filter(l => l.desc || +l.value);
+    const box = (t, h) => `<div style="border:1px solid #9aa7bd;border-radius:6px;padding:6px 10px;min-height:${h}mm"><small style="color:#5b6b82;font-size:8.5pt">${t}</small></div>`;
+    lhPrint('INTERIM PAYMENT APPLICATION', [['Application No.', esc(d.no)], ['Date', dmy(d.date)], ['Work done up to', dmy(D.period)], ['Contract ref.', esc(d.site)]],
+      `<div class="lh-grid"><div class="lh-card"><small>Project</small><b>${esc(s.project || d.site)}</b><div>${esc([s.plot ? 'Plot ' + s.plot : '', s.location].filter(Boolean).join(', '))}</div></div>
+        <div class="lh-card"><small>To</small><div><b style="display:inline;font-size:9.5pt">Consultant:</b> ${esc(s.consultant || '')}</div><div><b style="display:inline;font-size:9.5pt">Owner:</b> ${esc(s.client || '')}</div><div><b style="display:inline;font-size:9.5pt">From:</b> Al Tarwi Building Contracting</div></div></div>
+      <p style="margin:6px 0 2px;font-size:10pt">We submit our interim payment application for the work done up to <b>${dmy(D.period)}</b> (overall work done ${D.pct}%) and request you to inspect and certify it for payment.</p>
+      ${lines.length ? `<div class="lh-sec">Work done</div><table class="lh-tb"><tr><th>#</th><th>Work item</th>${lines.some(l => l.w) ? '<th class="n">Weight</th>' : ''}<th class="n">Value (AED)</th><th class="n">% done</th><th class="n">Done (AED)</th></tr>
+        ${lines.map((l, i) => `<tr><td>${i + 1}</td><td>${esc(l.desc)}</td>${lines.some(x => x.w) ? `<td class="n">${l.w ? xr2(l.w) + '%' : ''}</td>` : ''}<td class="n">${aed(l.value)}</td><td class="n">${xr2(l.pct)}%</td><td class="n">${aed(xr2(l.value) * xr2(l.pct) / 100)}</td></tr>`).join('')}</table>` : ''}
+      <div class="lh-sec">Valuation</div>
+      <table class="lh-tb"><tr><th>#</th><th>Description</th><th class="n">Amount (AED)</th></tr>
+        ${[['Original contract value', D.contract], ['Approved variations', D.variations], ['Revised contract value', D.revised], ['Work done to date (' + D.pct + '%)', D.workDone],
+          ['Less retention ' + xr2(D.retPct) + '%', -D.retention], ['Less advance payment recovery', -D.advRec], ['Net value to date', D.netToDate],
+          ['Less previously certified' + (D.prevNo ? ' (' + D.prevNo + ')' : ''), -D.prev]].map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r[0])}</td><td class="n" style="${r[1] < 0 ? 'color:#a93226' : ''}">${r[1] < 0 ? '(' + aed(-r[1]) + ')' : aed(r[1])}</td></tr>`).join('')}</table>
+      ${lhTot([['Amount applied this application', aed(D.due)], ['VAT ' + xr2(D.vatPct) + '%', aed(D.vat)], ['Total applied', 'AED ' + aed(D.total), 'grand']])}
+      <div class="lh-words">${esc(aedWords(D.total))}</div>
+      ${D.notes ? `<p class="lh-note">${esc(D.notes)}</p>` : ''}
+      <div class="lh-sec">For the consultant</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:3mm;break-inside:avoid">${box('Work done assessed (%) / amount recommended for payment (AED, excl. VAT)', 14)}${box('Comments', 14)}</div>
+      ${lhSig([['Submitted by – Contractor', 'Al Tarwi Building Contracting'], ['Received / checked – Consultant', s.consultant || ''], ['Approved – Owner', s.client || '']])}`,
+      { stamp: d.status === 'Cancelled' ? 'CANCELLED' : '', mh: true });
+    return;
+  }
   if (cert) {
     const lines = (D.lines || []).filter(l => l.desc || +l.value);
-    lhPrint('INTERIM PAYMENT CERTIFICATE', [['Certificate No.', esc(d.no)], ['Date', dmy(d.date)], ['Work done up to', dmy(D.period)], ['Contract ref.', esc(d.site)]],
+    lhPrint('INTERIM PAYMENT CERTIFICATE', [['Certificate No.', esc(d.no)], ['Date', dmy(d.date)], ['Work done up to', dmy(D.period)], ['Contract ref.', esc(d.site)], ...(D.reqNo ? [['Our application', esc(D.reqNo)]] : [])],
       `<div class="lh-grid"><div class="lh-card"><small>Project</small><b>${esc(s.project || d.site)}</b><div>${esc([s.plot ? 'Plot ' + s.plot : '', s.location].filter(Boolean).join(', '))}</div></div>
         <div class="lh-card"><small>Parties</small><div><b style="display:inline;font-size:9.5pt">Owner:</b> ${esc(s.client || '')}</div><div><b style="display:inline;font-size:9.5pt">Consultant:</b> ${esc(s.consultant || '')}</div><div><b style="display:inline;font-size:9.5pt">Contractor:</b> Al Tarwi Building Contracting</div></div></div>
       ${lines.length ? `<div class="lh-sec">Work done</div><table class="lh-tb"><tr><th>#</th><th>Work item</th><th class="n">Value (AED)</th><th class="n">% done</th><th class="n">Done (AED)</th></tr>
@@ -3609,10 +3674,10 @@ function xProjMoney(code){
   const man = r => (r.co || []).reduce((n, x) => n + num(x.skilled) + num(x.unskilled), 0) + (r.sub || []).reduce((n, x) => n + num(x.skilled) + num(x.unskilled), 0);
   return `<div class="x-stats"><div><b>${aed(m.inv)}</b><small>Invoiced</small></div><div><b>${aed(m.rec)}</b><small>Received</small></div><div><b class="${m.due > 0 ? 'neg' : ''}">${aed(m.due)}</b><small>Still due</small></div></div>
     ${rev ? `<p class="hint" style="margin:8px 0 0">Contract AED ${aed(rev)} · work done ${pct}% (last certificate)</p>` : ''}
-    <div class="x-big" style="margin-top:10px">${xIsAdmin() ? `<button class="in" data-xnewsite="CLIENT RECEIPT">Client paid<small>Receipt voucher</small></button>` : ''}
+    <div class="x-big" style="margin-top:10px">${xIsAdmin() ? `<button class="rq" data-xreqnew="${esc(code)}">Payment request<small>Ask the client – from progress</small></button><button class="in" data-xnewsite="CLIENT RECEIPT">Client paid<small>Receipt voucher</small></button>` : ''}
       ${xCanAdd() || xCanBill() ? `<button class="out" data-xnewsite="EXPENSE">+ Expense<small>For this project</small></button>` : ''}</div>
     ${fold('Money from the client', docs.length + ' documents · ' + recs.length + ' payments', `
-      <div class="x-list">${docs.map(x => { const st = xDocState(x); return `<button class="x-it${x.status === 'Cancelled' ? ' cx' : ''}" data-xdoc="${esc(x.id)}"><span class="ic ${x.kind === 'CERT' ? 'tr' : st === 'Paid' ? 'in' : ''}">${x.kind === 'CERT' ? 'IPC' : 'INV'}</span>
+      <div class="x-list">${docs.map(x => { const st = xDocState(x); return `<button class="x-it${x.status === 'Cancelled' ? ' cx' : ''}" data-xdoc="${esc(x.id)}"><span class="ic ${x.kind === 'CERT' ? 'tr' : x.kind === 'REQ' ? 'rq' : st === 'Paid' ? 'in' : ''}">${xDocTag(x.kind)}</span>
         <span class="t"><b>${esc(x.no)}</b><small>${dmy(x.date)} · ${st}${x.kind === 'INV' && /Part|Unpaid/.test(st) ? ' · due ' + aed(x.total - xDocPaid(x)) : ''}</small></span><span class="a">${aed(x.total)}</span></button>`; }).join('') || '<div class="empty" style="padding:10px">No certificates or invoices yet.</div>'}</div>
       ${recs.length ? `<div class="x-sec">Payments received</div><div class="x-list">${recs.map(xRow).join('')}</div>` : ''}
       ${chq.length ? `<div class="x-sec">Cheques not cleared</div><div class="x-list">${chq.map(c => `<button class="x-it" data-xchq="${esc(c.id)}"><span class="ic tr">${esc(String(c.no).slice(-3))}</span><span class="t"><b>${esc(c.party)}</b><small>Chq ${esc(c.no)} · ${dmy(c.date)} · ${esc(c.status)}</small></span><span class="a">${aed(c.amount)}</span></button>`).join('')}</div>` : ''}`, true)}
@@ -3704,7 +3769,8 @@ function xProjProgress(code){
         <small class="hint">${dmy(it.start)} → ${dmy(xActEnd(it))} · weight ${it.w}% · planned now ${pl}%${late ? ' · LATE' : ''}</small>
         <input type="range" min="0" max="100" step="5" value="${+it.pct}" data-xpg="${i}" aria-label="% done ${esc(it.name)}" style="width:100%;margin-top:6px"></div>`; }).join('')}</div>
     <div class="x-big" style="margin-top:10px"><button class="in" data-xpgsave="${esc(code)}">Save progress<small>${X.schDraft && X.schDraft.code === code ? 'Changes not saved yet' : 'Saves today’s % for the S-curve'}</small></button>
-      <button class="out" data-xschprint="${esc(code)}">Progress report<small>Print / WhatsApp</small></button></div>`;
+      <button class="out" data-xschprint="${esc(code)}">Progress report<small>Print / WhatsApp</small></button></div>
+    ${xIsAdmin() ? `<button class="btn sec" data-xreqnew="${esc(code)}" style="width:100%;margin-top:10px">Payment request from this progress (${dst.actual}%)</button>` : ''}`;
 }
 /* Schedule (Gantt) tab */
 function xProjGantt(code){
@@ -4538,6 +4604,14 @@ $('exp').addEventListener('click', async e => {
   if (D.xdocs != null) { X.docSite = D.xdocs; return xGo('docs'); }
   if (D.xdoc) return xDocDetail(D.xdoc);
   if (D.xdocnew) return xDocNew(D.xdocnew);
+  if (D.xreqnew != null) return xReqNew(D.xreqnew);
+  if ('xreqre' in D) { X.df.lines = xReqLines(X.df); xDocForm(); toast('Items and % done refreshed from Progress'); return; }
+  if (D.xreqcert) return xDocNew('CERT', (X.d.docs || []).find(x => x.id === D.xreqcert));
+  if (D.xreqst) { const [id, st] = D.xreqst.split('|'), dd = (X.d.docs || []).find(x => x.id === id);
+    const q = { Submitted: `Mark ${dd.no} as sent to the client / consultant?`, Approved: `Mark ${dd.no} as approved? Then tap "Make certificate".`, Rejected: `Mark ${dd.no} as rejected? You can make a new request afterwards.`, Draft: `Put ${dd.no} back to draft?` }[st];
+    if (!await ask(q, 'Yes')) return;
+    try { X.d = await server('expDocStatus', id, st, X.pin); keep('exp.cache', X.d); toast(dd.no + ' – ' + st.toLowerCase()); xDocDetail(id); } catch (er) { toast(errText(er)); }
+    return; }
   if (D.xdocedit) return xDocEdit(D.xdocedit);
   if (D.xdocinv) return xDocNew('INV', (X.d.docs || []).find(x => x.id === D.xdocinv));
   if (D.xdocprint) return xDocPrint((X.d.docs || []).find(x => x.id === D.xdocprint));
@@ -4549,17 +4623,17 @@ $('exp').addEventListener('click', async e => {
     try { X.d = await server('expDocStatus', dd.id, 'Cancelled', X.pin); keep('exp.cache', X.d); toast(dd.no + ' cancelled'); xGo('docs'); } catch (er) { toast(errText(er)); }
     return; }
   if ('xdladd' in D) { const f = X.df; f.lines = f.lines || [];
-    if (f.kind === 'CERT' && !f.lines.length) { f.lines.push({ desc: '', value: String(xr2(f.contract) + xr2(f.variations) || ''), pct: f.pct || '' }); }
-    else f.lines.push(f.kind === 'CERT' ? { desc: '', value: '', pct: '' } : { desc: '', qty: '1', unit: 'LS', rate: '', amount: '' });
+    if (xIsVal(f.kind) && !f.lines.length) { f.lines.push({ desc: '', value: String(xr2(f.contract) + xr2(f.variations) || ''), pct: f.pct || '' }); }
+    else f.lines.push(xIsVal(f.kind) ?{ desc: '', value: '', pct: '' } : { desc: '', qty: '1', unit: 'LS', rate: '', amount: '' });
     xDocForm(); return; }
   if (D.xdldel != null) { X.df.lines.splice(+D.xdldel, 1); xDocForm(); return; }
   if (b.id === 'xd-save') {
-    const f = X.df, c = f.kind === 'CERT' ? xCertCalc(f) : xInvCalc(f);
+    const f = X.df, c = xIsVal(f.kind) ? xCertCalc(f) : xInvCalc(f);
     if (!(c.total > 0) && !await ask('The total is AED ' + aed(c.total) + '. Save anyway?', 'Save')) return;
     const data = Object.assign({}, f, c); ['id', 'kind', 'site', 'no', 'date'].forEach(k => delete data[k]);
     b.disabled = true; b.textContent = 'Saving…';
     try { X.d = await server('expSaveDoc', { id: f.id, kind: f.kind, site: f.site, no: f.no, date: f.date, total: c.total, data }, X.pin); keep('exp.cache', X.d);
-      toast((f.kind === 'CERT' ? 'Certificate ' : 'Tax invoice ') + f.no + ' saved'); const saved = (X.d.docs || []).find(x => x.no === f.no && x.kind === f.kind); X.df = null;
+      toast(xDocName(f.kind) + ' ' + f.no + ' saved' + (f.kind === 'CERT' ? ' – tax invoice made / updated' : '')); const saved = (X.d.docs || []).find(x => x.no === f.no && x.kind === f.kind); X.df = null;
       if (saved) xDocDetail(saved.id); else xGo('docs'); }
     catch (er) { $('x-ferr').textContent = errText(er); b.disabled = false; b.textContent = 'Save'; }
     return;
@@ -4657,10 +4731,15 @@ $('exp').addEventListener('input', e => {
   if (t.dataset.xd && X.df) { const k = t.dataset.xd, f = X.df; f[k] = t.value;
     if (k === 'advRec') f.advRecEdit = t.value.trim() !== '';
     if (k === 'site') { const s = xSite(f.site); f.no = f.id ? f.no : xDocNextNo(f.kind, f.site);
-      if (f.kind === 'CERT') Object.assign(f, { contract: s.contract || '', variations: s.variations || '', advance: s.advance || '', retPct: s.retention === '' || s.retention == null ? X.d.settings.retention : s.retention });
+      if (xIsVal(f.kind)) Object.assign(f, { contract: s.contract || '', variations: s.variations || '', advance: s.advance || '', retPct: s.retention === '' || s.retention == null ? X.d.settings.retention : s.retention });
       else Object.assign(f, { client: s.client || '', clientTrn: s.clientTrn || '', address: [s.plot ? 'Plot ' + s.plot : '', s.location].filter(Boolean).join(', ') });
+      if (f.kind === 'REQ') f.lines = xReqLines(f);
       xDocPrev(); xDocForm(); return; }
-    if (k === 'period' || k === 'date') { xDocPrev(); const p = $('xd-prev'); if (p && f.kind === 'CERT') p.value = f.prev; }
+    if (f.kind === 'REQ' && (k === 'contract' || k === 'variations') && (f.lines || []).some(l => l.w)) {   // re-price the programme items
+      const W = f.lines.reduce((a, l) => a + (+l.w || 0), 0) || 1, rev = xr2(f.contract) + xr2(f.variations); let left = xr2(rev);
+      f.lines.forEach((l, i) => { if (!l.w) return; l.value = String(i === f.lines.length - 1 ? left : xr2(rev * l.w / W)); left = xr2(left - xr2(l.value));
+        const n = document.querySelector(`[data-xdl="${i}|value"]`); if (n) n.value = l.value; }); }
+    if (k === 'period' || k === 'date') { xDocPrev(); const p = $('xd-prev'); if (p && xIsVal(f.kind)) p.value = f.prev; }
     xDocCalc(); return; }
   if (t.dataset.xdl && X.df) { const [i, k] = t.dataset.xdl.split('|'), l = X.df.lines[+i]; l[k] = t.value;
     if (X.df.kind === 'INV' && (k === 'qty' || k === 'rate') && xr2(l.qty) && xr2(l.rate)) { l.amount = xr2(xr2(l.qty) * xr2(l.rate)).toFixed(2); const a = document.querySelector(`[data-xdl="${i}|amount"]`); if (a) a.value = l.amount; }
