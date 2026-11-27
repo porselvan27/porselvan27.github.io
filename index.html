@@ -513,6 +513,7 @@ body.at-exp{overflow:hidden}body.at-exp .bar{display:none!important}
 .x-nav button{flex:1;border:0;background:none;color:#d3e0f5;border-radius:10px;padding:8px;font:600 14px var(--f-body);cursor:pointer;transition:all .3s var(--ease)}
 .x-nav button.on{background:#fff;color:#0b2a5b;box-shadow:0 4px 14px -4px #0006}
 .x-main{max-width:760px;margin:0 auto;padding:16px 16px calc(110px + env(safe-area-inset-bottom))}
+.x-main:has(.x-save .btn:nth-child(4)){padding-bottom:calc(170px + env(safe-area-inset-bottom))}
 .x-main>*{animation:rowIn .45s var(--ease) both}
 .x-login{text-align:center;padding:40px 10px}
 .x-login svg{width:84px;height:84px;border-radius:24px;box-shadow:0 14px 30px -12px #0b2a5b88}
@@ -569,7 +570,7 @@ details.x-fold>div{padding:0 12px 12px}
 .x-it .ic{width:38px;height:38px;border-radius:12px;flex:none;display:grid;place-items:center;font:700 13px var(--f-display);color:#fff;background:#d9622b}
 .x-it .ic.in{background:#17734a}.x-it .ic.tr{background:#5d6a7e}.x-it .ic.rq{background:#b9770e}
 .x-it .t{flex:1;min-width:0}.x-it .t b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px}
-.x-it .t small{color:var(--muted);font-size:12px}
+.x-it .t small{color:var(--muted);font-size:12px}.x-it .t small + small{display:block;margin-top:1px}
 .x-it .a{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
 .x-it .a.out{color:var(--danger)}.x-it .a.in{color:var(--ok)}.x-it.cx{opacity:.5}.x-it.cx .a{text-decoration:line-through}
 .x-st{display:inline-block;font:600 10.5px var(--f-body);padding:2px 7px;border-radius:999px;margin-top:3px;background:var(--pill);color:var(--blue)}
@@ -596,8 +597,8 @@ details.x-fold>div{padding:0 12px 12px}
 .x-rc .ph button{position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:50%;border:0;background:#000a;color:#fff;cursor:pointer;line-height:24px}
 .x-rc .add{width:86px;height:86px;border-radius:12px;border:2px dashed var(--line);background:none;color:var(--blue);font:600 12px var(--f-body);cursor:pointer}
 .x-save{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--bar);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:10px 16px calc(10px + env(safe-area-inset-bottom))}
-.x-save>div{max-width:760px;margin:0 auto;display:flex;gap:10px}.x-save .btn{flex:1}.x-save .btn.sec{flex:0 0 auto}
-.x-ferr{color:var(--danger);font-weight:600;font-size:13px;min-height:0}
+.x-save>div{max-width:760px;margin:0 auto;display:flex;flex-wrap:wrap;gap:8px 10px}.x-save .btn{flex:1 1 auto;min-width:0}.x-save .btn.sec{flex:0 1 auto}
+@media (max-width:520px){.x-save .btn{padding-left:14px;padding-right:14px}.x-save>div:has(> .btn:nth-child(4)) .btn.sec{flex:1 1 auto}}.x-ferr{color:var(--danger);font-weight:600;font-size:13px;min-height:0}
 .x-filt{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
 .x-tot{display:flex;gap:10px;margin:0 0 10px;font-size:13px;font-weight:600;flex-wrap:wrap}
 .x-tot span{background:var(--card);border-radius:999px;padding:6px 12px;box-shadow:var(--shadow)}
@@ -753,7 +754,7 @@ button.x-bk{text-align:left;border:0;cursor:pointer;font:inherit;color:inherit}
   <div class="x-head"><div class="x-top">
     <button class="hbtn" data-xhome aria-label="Al Tarwi home" title="Al Tarwi home"></button>
     <svg class="mark" viewBox="0 0 120 120" aria-hidden="true"><use href="#at-mark"/></svg>
-    <h1>Expenses</h1><button class="x-user" id="x-user" hidden></button>
+    <h1 id="x-title">Expenses</h1><button class="x-user" id="x-user" hidden></button>
   </div>
   <nav class="x-nav" id="x-nav" hidden><button data-x="home" class="on">Home</button><button data-x="list">Entries</button></nav></div>
   <div class="x-main" id="x-main"></div>
@@ -1255,7 +1256,7 @@ document.addEventListener('click', async e => {
       lines: [{ desc: String(m.desc || '').trim(), qty: String(parseFloat(q.replace(/,/g, '')) || ''), unit: q.replace(/[\d.,\s]+/g, ' ').trim(), rate: '', amount: '' }] };
     openExp(); xNew('EXPENSE'); toast('Expense started from the delivery – add the amount or scan the bill'); return;
   }
-  if ('sitepage' in d){ X.siteCode = normSite(cur.site); X.view = 'site'; openExp(); return; }
+  if ('sitepage' in d){ X.siteCode = normSite(cur.site); X.view = 'site'; X.goAfter = 'site'; openExp(); return; }
   if (d.add){ cur[d.add].push(blankRow(d.add)); renderSec(d.add); dirty = true; dsrRefresh();
     const rows = $(d.add).querySelectorAll('.row'); rows[rows.length-1].querySelector('input,textarea').focus(); }
   if (d.del){ const [sec,i] = d.del.split(':'); cur[sec].splice(i,1); renderSec(sec); totals(); dirty = true; if (sec === 'rec') dsrSyncStock(); dsrRefresh(); }
@@ -1894,18 +1895,20 @@ $('home').addEventListener('click', e => {
   const t = e.target.closest('[data-app],[data-go]'); if (!t) return;
   if (t.dataset.go) openApp(t.dataset.go);
   else if (t.dataset.app === 'dsr') openApp();
-  else if (t.dataset.app === 'exp') openExp();
+  else if (t.dataset.app === 'exp') { if (X.view !== 'form') X.view = 'home'; X.goAfter = 'home'; openExp(); }   // Expenses always opens on its own home
   else if (t.dataset.app === 'proj') { X.view = 'sites'; X.goAfter = 'sites'; openExp(); }
   else toast(t.dataset.app + ' is coming soon');
 });
 $('b-home').onclick = () => { if (history.state === 'app') history.back(); else goHome(); };
 addEventListener('popstate', () => {
-  if (document.body.classList.contains('at-exp') && /form|detail/.test(X.view)) { history.pushState('app', ''); X.f = null; xGo(X.view === 'detail' ? (X.prev === 'appr' ? 'appr' : 'list') : 'home'); return; }
+  // phone back button inside Expenses / Projects: back to the screen you came from; out to the Al Tarwi home only when there is nothing left
+  if (document.body.classList.contains('at-exp') && !X.goingHome && X.view !== 'login' && xBack()) { history.pushState('app', ''); return; }
+  X.goingHome = false;
   if (!atHome()) goHome();
 });
 
 /* =================== EXPENSES (Phase 1) =================== */
-const X = { pin: load('exp.pin', ''), d: load('exp.cache', null), view: 'home', f: null, filt: { month: '', site: '', cat: '', status: '', q: '' } };
+const X = { pin: load('exp.pin', ''), d: load('exp.cache', null), view: 'home', f: null, stack: [], filt: { month: '', site: '', cat: '', status: '', q: '' } };
 const XSRC = ['Online transfer from company account', 'ATM withdrawal', 'Cash from MD', 'Cash from client', 'Other'];
 const XOWNTR = 'Transfer from my own account (company cash)';   // company cash in hand, sent from the person's own bank → out of their cash box
 const XPAY = ['Cash', XOWNTR, 'Bank transfer', 'Cheque', 'Company card', 'Personal card / own pocket'];
@@ -1919,15 +1922,39 @@ const xCanAdd = () => X.d && X.d.user.role !== 'Viewer' && X.d.user.role !== 'Ap
 const xCanBill = () => X.d && /Admin|Approver/.test(X.d.user.role);        // supplier bills, suppliers list
 const xMain = () => $('x-main');
 
+/* screen history inside Expenses / Projects (pages only; a detail or form screen goes back to the page it was opened from) */
+function xPush(v){
+  if (X.restoring || !XVIEWS.has(v)) return;
+  const top = X.stack[X.stack.length - 1], e = { v, code: X.siteCode, supp: X.suppName, pnl: X.pnlSite, ltr: X.ltrId };
+  if (top && top.v === v && (v !== 'site' || top.code === X.siteCode)) X.stack[X.stack.length - 1] = e; else X.stack.push(e);
+  if (X.stack.length > 40) X.stack.shift();
+}
+function xBack(){
+  const st = X.stack, cur = X.view; let top = st[st.length - 1];
+  if (top && top.v === cur && (cur !== 'site' || top.code === X.siteCode)) { st.pop(); top = st[st.length - 1]; }
+  if (!top) return false;
+  X.f = null; X.df = null; X.actf = null;
+  Object.assign(X, { siteCode: top.code, suppName: top.supp, pnlSite: top.pnl, ltrId: top.ltr });
+  X.restoring = true; try { xGo(top.v); } finally { X.restoring = false; }
+  return true;
+}
 function openExp(){
+  if (!document.body.classList.contains('at-exp')) X.stack = [];
   document.body.classList.remove('at-home'); document.body.classList.add('at-exp');
   if (history.state !== 'app') history.pushState('app', '');
   if (!X.pin) return xLogin();
-  if (X.d) xGo(X.view === 'form' ? 'home' : X.view); else xMain().innerHTML = '<div class="empty">Loading…</div>';
+  if (X.d) xGo(XVIEWS.has(X.view) ? X.view : 'home'); else { X.view = 'loading'; xMain().innerHTML = '<div class="empty">Loading…</div>'; }
   xLoad();
 }
+/* screens xGo can draw by itself (lists and pages). Forms and detail screens are left alone when fresh data arrives. */
+const XVIEWS = new Set(['home', 'list', 'appr', 'count', 'adv', 'reimb', 'cost', 'budget', 'veh', 'bank', 'chq', 'docs', 'sites', 'new', 'site', 'supp', 'suppd', 'pnl', 'pnld', 'letters', 'ltrd', 'ltrnew', 'brec', 'srec', 'miss', 'sum']);
+const XPROJ = new Set(['sites', 'site', 'sitef', 'actf']);
 function xLoad(){
-  return server('expAll', X.pin).then(d => { X.d = d; keep('exp.cache', d); if (X.view !== 'form') xGo(X.view === 'detail' ? (X.prev === 'appr' ? 'appr' : 'list') : (X.view === 'login' ? (X.goAfter || 'home') : X.view)); X.goAfter = ''; })
+  return server('expAll', X.pin).then(d => { X.d = d; keep('exp.cache', d);
+      const v = X.view;
+      if (v === 'login' || v === 'loading') xGo(X.goAfter || 'home');
+      else if (XVIEWS.has(v)) { const y = $('exp').scrollTop; xGo(v); $('exp').scrollTop = y; }   // refresh in place – same screen, same scroll
+      X.goAfter = ''; })
     .catch(e => { const m = errText(e);
       if (/PIN/i.test(m)) { X.pin = ''; keep('exp.pin', ''); X.d = null; keep('exp.cache', null); xLogin(m); }
       else if (!X.d) xMain().innerHTML = `<div class="empty">Could not load expenses. ${esc(m)}<br><br><button class="btn" data-xretry>Try again</button></div>`;
@@ -1946,12 +1973,13 @@ const xCanApprove = () => X.d && /Admin|Approver/.test(X.d.user.role);
 const xPending = () => X.d.txns.filter(t => t.status === 'Pending MD');
 const xClosed = d => (X.d.closed || []).indexOf(String(d || '').slice(0, 7)) >= 0;
 function xGo(v){
-  const was = X.view; X.view = v; $('x-nav').hidden = $('x-user').hidden = false;
+  const was = X.view; X.view = v; $('x-nav').hidden = $('x-user').hidden = false; xPush(v);
   $('x-user').textContent = X.d.user.name.split(' ')[0] + ' · ' + X.d.user.role;
-  const n = xPending().length;
-  $('x-nav').innerHTML = `<button data-x="home">Home</button><button data-x="list">Entries</button>`
+  const n = xPending().length, proj = XPROJ.has(v);
+  $('x-title').textContent = proj ? 'Projects' : 'Expenses';
+  $('x-nav').innerHTML = (proj ? `<button data-x="sites">Projects</button><button data-x="home">Expenses</button>` : `<button data-x="home">Home</button><button data-x="list">Entries</button>`)
     + (xCanApprove() ? `<button data-x="appr">Approvals${n ? ` <span class="x-badge">${n}</span>` : ''}</button>` : '');
-  document.querySelectorAll('#x-nav button').forEach(b => b.classList.toggle('on', b.dataset.x === v));
+  document.querySelectorAll('#x-nav button').forEach(b => b.classList.toggle('on', b.dataset.x === v || (b.dataset.x === 'sites' && proj)));
   if (v === 'home') xHome(); else if (v === 'list') xList(); else if (v === 'appr') xAppr();
   else if (v === 'count') xCount(); else if (v === 'adv') xAdv(); else if (v === 'reimb') xReimb();
   else if (v === 'cost') xCost(); else if (v === 'budget') xBudget(); else if (v === 'veh') xVeh();
@@ -2104,7 +2132,7 @@ function xAdv(){
       <span class="t"><b>${esc(p.name)}</b><small>Given ${aed(p.given)} · recovered ${aed(p.back)}</small></span>
       <span class="a ${p.due > 0 ? 'out' : 'in'}">${p.due > 0 ? aed(p.due) : 'Clear'}</span></button>`).join('') || '<div class="empty">No staff advances recorded. Advances are expenses with the category "Staff / labour advances" and a staff name.</div>'}</div>
     <p class="hint" style="margin-top:12px">Before the 25th, print this list for payroll – deductions need a written record under WPS.</p>
-    <div class="x-save"><div><button class="btn sec" data-x="home">Back</button>${xCanAdd() ? '<button class="btn sec" data-xnew="RECOVERY">Record recovery</button>' : ''}<button class="btn" data-xadvprint>Print list</button></div></div>`;
+    <div class="x-save"><div><button class="btn sec" data-xback="home">Back</button>${xCanAdd() ? '<button class="btn sec" data-xnew="RECOVERY">Record recovery</button>' : ''}<button class="btn" data-xadvprint>Print list</button></div></div>`;
 }
 function xAdvPrint(){
   const due = xAdvances().filter(p => p.due > 0), m = new Date().toLocaleString('en-GB', { month: 'long', year: 'numeric' });
@@ -2134,7 +2162,7 @@ function xReimb(){
       ${xIsAdmin() ? `<div class="x-reimb"><select data-xrbox="${esc(p)}"><option value="">Paid by bank / other</option>${X.d.boxes.filter(b => !/^TEST/.test(b)).map(opt).join('')}</select>
         <button class="btn ok" data-xreimb="${esc(p)}">Mark AED ${aed(sum)} reimbursed</button></div>` : ''}`; }).join('')
       || '<div class="empty">Nothing to reimburse. Expenses paid from someone\'s own pocket appear here until they are paid back.</div>'}
-    <div class="x-save"><div><button class="btn sec" data-x="home">Back</button></div></div>`;
+    <div class="x-save"><div><button class="btn sec" data-xback="home">Back</button></div></div>`;
 }
 /* ---------- site costs: expenses (with site splits) + company labour from the Daily Site Report ---------- */
 /* a COST = an expense paid at once, or a supplier / subcontractor bill (on credit). A payment against a bill
@@ -2212,7 +2240,7 @@ function xCost(){
     <div class="x-tot"><span>Total expenses AED ${aed(tot)}</span><span>${sitesR.length} sites</span></div>
     <div class="x-sec">Sites</div><div class="x-list">${sitesR.map(line).join('') || '<div class="empty">No site expenses yet.</div>'}</div>
     ${ovR.length ? `<div class="x-sec">Overheads</div><div class="x-list">${ovR.map(line).join('')}</div>` : ''}
-    <div class="x-save"><div><button class="btn sec" data-x="home">Back</button></div></div>`;
+    <div class="x-save"><div><button class="btn sec" data-xback="home">Back</button></div></div>`;
 }
 /* admin: budget per site and per category, plus labour day rates */
 function xBudget(){
@@ -2228,7 +2256,7 @@ function xBudget(){
       <div class="x-two"><div><label for="xr-sk">Skilled (AED/day)</label><input id="xr-sk" inputmode="decimal" value="${st.rateSkilled || ''}"></div>
         <div><label for="xr-us">Unskilled (AED/day)</label><input id="xr-us" inputmode="decimal" value="${st.rateUnskilled || ''}"></div></div>
       <button class="btn sec" id="xr-save">Save day rates</button></div></div>
-    <div class="x-save"><div><button class="btn sec" data-x="cost">Back</button></div></div>`;
+    <div class="x-save"><div><button class="btn sec" data-xback="cost">Back</button></div></div>`;
 }
 /* printable site cost sheet (A4) */
 function xCostPrint(){
@@ -2281,7 +2309,7 @@ function xVeh(){
     </div></div>`; }).join('');
   xMain().innerHTML = `<div class="x-filt" style="grid-template-columns:1fr"><select id="xv-per"><option value="">All dates</option>${months.map(mm => `<option value="${mm}"${mm === per ? ' selected' : ''}>${new Date(mm + '-15T12:00').toLocaleString('en-GB', { month: 'long', year: 'numeric' })}</option>`).join('')}</select></div>
     ${cards || '<div class="empty">No vehicle expenses yet. Choose the vehicle when entering fuel or vehicle maintenance.</div>'}
-    <div class="x-save"><div><button class="btn sec" data-x="home">Back</button></div></div>`;
+    <div class="x-save"><div><button class="btn sec" data-xback="home">Back</button></div></div>`;
 }
 /* admin: close / reopen months (closed months cannot be changed) */
 function xMonths(){
@@ -2631,7 +2659,7 @@ function xMiss(){
         ${t.by === me || xIsAdmin() ? `<button class="btn ok" data-xaddrc2="${esc(t.id)}">Add receipt photo</button>` : '<span></span>'}</div>
     </div></div>`).join('') || '<div class="empty">All receipts are in. Nothing missing.</div>'}
     <p class="hint" style="margin-top:12px">Expenses above AED ${aed(X.d.settings.receiptLimit)} need a receipt photo. Adding a photo later changes nothing else in the entry.</p>
-    <div class="x-save"><div><button class="btn sec" data-x="home">Back</button></div></div>`;
+    <div class="x-save"><div><button class="btn sec" data-xback="home">Back</button></div></div>`;
 }
 /* MD daily summary (built on the server, same as the 8 pm email) */
 function xSum(){
@@ -2663,7 +2691,7 @@ function xSum(){
     ${s.budget.length ? `<div class="x-sec">Budget warnings</div>${tbl(s.budget, b => it(esc(b.site), aed(b.cost) + ' of ' + aed(b.budget) + xBar(b.cost, b.budget), b.pct + '%', b.pct >= 100 ? 'out' : ''))}` : ''}
     <div class="x-sec">Daily Site Reports</div><p class="hint" style="margin:0 0 8px">${s.dsr.length ? 'Received for ' + s.dsr.map(esc).join(', ') : 'No Daily Site Report saved for this day.'}</p>
     ${s.emailOn ? '<p class="x-md" style="margin-top:12px">This summary is also emailed every evening at 8 pm.</p>' : ''}
-    <div class="x-save"><div><button class="btn sec" data-x="home">Back</button><button class="btn sec" data-xsprint>Print</button>
+    <div class="x-save"><div><button class="btn sec" data-xback="home">Back</button><button class="btn sec" data-xsprint>Print</button>
       <a class="btn ok" href="https://wa.me/?text=${encodeURIComponent(s.text)}" target="_blank" rel="noopener">Share on WhatsApp</a></div></div>`;
 }
 function xSumPrint(){
@@ -2963,7 +2991,7 @@ function xSites(){
         <span class="t"><b>${esc(s.code)}${s.client ? ' · ' + esc(s.client) : ''}</b><small>${esc([s.project, s.plot ? 'Plot ' + s.plot : '', s.consultant].filter(Boolean).join(' · ') || 'Details not filled yet')}</small>
         <small>${(() => { const sc = xSch(s.code); if (!sc) return ''; const q = xSchStats(sc); return q.actual + '% done' + (q.diff < -5 ? ' (behind)' : '') + ' · '; })()}${r.length ? (today0 ? '✓ Report today' : 'Last report ' + dmy(r[0].date)) : 'No reports yet'}${open ? ' · ' + open + ' open letter' + (open > 1 ? 's' : '') : ''}${m && m.due > 0 ? ' · due ' + aed(m.due) : ''}</small></span>
         <span class="a">${esc(s.status || 'Active')}</span></button>`; }).join('') || '<div class="empty">No projects found.</div>'}</div>
-    <div class="x-save"><div><button class="btn sec" data-x="home">Back</button>${xIsAdmin() ? '<button class="btn" data-xsitef="">Add project</button>' : ''}</div></div>`;
+    <div class="x-save"><div><button class="btn sec" data-xback="home">Back</button>${xIsAdmin() ? '<button class="btn" data-xsitef="">Add project</button>' : ''}</div></div>`;
 }
 /* open the Daily Site Report app on a project: today's report, or a saved one */
 async function xOpenDsr(site, id){
@@ -2991,7 +3019,7 @@ function xSiteForm(code){
     ${m ? `<div class="x-stats"><div><b>${aed(m.inv)}</b><small>Invoiced</small></div><div><b>${aed(m.rec)}</b><small>Received</small></div><div><b class="${m.due > 0 ? 'neg' : ''}">${aed(m.due)}</b><small>Outstanding</small></div></div>
       ${m.cert ? `<p class="hint">Last certificate ${esc(m.cert.no)} (${dmy(m.cert.date)}): work done ${aed(m.cert.data.workDone)} · ${m.cert.data.pct || 0}%.</p>` : ''}` : ''}
     <p class="x-ferr" id="x-ferr"></p></div>
-    <div class="x-save"><div>${code ? `<button class="btn sec" data-xsitep="${esc(code)}">Back</button>` : '<button class="btn sec" data-x="sites">Back</button>'}${ro ? '' : '<button class="btn ok" id="xs-save">Save site</button>'}</div></div>`;
+    <div class="x-save"><div>${code ? `<button class="btn sec" data-xsitep="${esc(code)}">Back</button>` : '<button class="btn sec" data-xback="sites">Back</button>'}${ro ? '' : '<button class="btn ok" id="xs-save">Save site</button>'}</div></div>`;
 }
 
 /* ---------- bank accounts: balance from app entries + cleared cheques ---------- */
@@ -3047,7 +3075,7 @@ function xBank(){
       <small>${b.pdcOut ? 'Out to clear ' + aed(b.pdcOut) : 'No cheques pending'}${b.stmt !== '' && b.stmt != null ? ' · stmt ' + (xr2(b.stmt - b.balAt(b.stmtDate || today())) === 0 ? '✓' : '≠') : ''}</small></button>`).join('')
       || '<div class="empty" style="grid-column:1/-1">No bank accounts yet. Add your company account with its balance on the start date.</div>'}</div>
     <p class="hint">The balance moves with: bank transfers and card payments, cheques when they are <b>Cleared</b>, cash withdrawn (Cash received → ATM / transfer), client receipts by transfer, and bank entries (cash deposit, transfer, charges).</p>
-    <div class="x-save"><div><button class="btn sec" data-x="home">Back</button>${xIsAdmin() ? `<button class="btn sec" data-xbankedit="">Add account</button>${list.length ? '<button class="btn" data-xnew="BANK">Bank entry</button>' : ''}` : ''}</div></div>`;
+    <div class="x-save"><div><button class="btn sec" data-xback="home">Back</button>${xIsAdmin() ? `<button class="btn sec" data-xbankedit="">Add account</button>${list.length ? '<button class="btn" data-xnew="BANK">Bank entry</button>' : ''}` : ''}</div></div>`;
 }
 function xBankForm(name){
   const b = name ? (X.d.banks || []).find(x => x.name === name) || {} : {};
@@ -3059,7 +3087,7 @@ function xBankForm(name){
         <div><label for="xbf-open">Balance on that date (AED)</label><input id="xbf-open" inputmode="decimal" value="${esc(b.opening != null ? b.opening : '')}" placeholder="From the statement"></div></div>
       <p class="hint">Only the last digits are kept – never the full account number. Entries before the start date are not counted (they are in the opening balance).</p>
     </div></div><p class="x-ferr" id="x-ferr"></p></div>
-    <div class="x-save"><div><button class="btn sec" data-x="bank">Back</button><button class="btn ok" id="xbf-save">Save account</button></div></div>`;
+    <div class="x-save"><div><button class="btn sec" data-xback="bank">Back</button><button class="btn ok" id="xbf-save">Save account</button></div></div>`;
 }
 
 /* ---------- cheque register ---------- */
@@ -3079,7 +3107,7 @@ function xChq(){
         <span class="t"><b>${esc(c.party || '–')}</b><small>Chq ${esc(c.no)} · ${dmy(c.date)}${c.account ? ' · ' + esc(c.account) : ''}${c.site ? ' · ' + esc(c.site) : ''}</small><br>
         <span class="x-st ${c.status === 'Cleared' ? 'Approved' : /Bounced|Returned|Cancelled/.test(c.status) ? 'Rejected' : 'Pending'}">${esc(c.status)}</span>${due ? ` <span class="x-st Rejected">${late ? 'Date passed' : 'Due soon'}</span>` : ''}</span>
         <span class="a ${dir === 'Issued' ? 'out' : 'in'}">${aed(c.amount)}</span></button>`; }).join('') || '<div class="empty">No cheques here.</div>'}</div>
-    <div class="x-save"><div><button class="btn sec" data-x="home">Back</button><button class="btn sec" data-xchqprint>Print</button>${xIsAdmin() ? `<button class="btn sec" data-xchqnew="${dir}">Add</button><button class="btn" data-xchqscan="${dir}">Scan cheques</button>` : ''}</div></div>`;
+    <div class="x-save"><div><button class="btn sec" data-xback="home">Back</button><button class="btn sec" data-xchqprint>Print</button>${xIsAdmin() ? `<button class="btn sec" data-xchqnew="${dir}">Add</button><button class="btn" data-xchqscan="${dir}">Scan cheques</button>` : ''}</div></div>`;
 }
 const XCHQ_NEXT = { Issued: ['Presented', 'Cleared', 'Bounced', 'Cancelled'], Presented: ['Cleared', 'Bounced'], Received: ['Deposited', 'Cleared', 'Bounced', 'Returned'], Deposited: ['Cleared', 'Bounced'], Bounced: ['Cancelled', 'Returned'] };
 function xChqDetail(id){
@@ -3125,7 +3153,7 @@ function xChqForm(dir, id, keep){
     </div></div>
     <datalist id="x-parties2">${[...new Set(X.d.parties.map(p => p.name).concat(X.d.sites.map(s => s.client).filter(Boolean)))].map(p => `<option value="${esc(p)}">`).join('')}</datalist>
     <p class="x-ferr" id="x-ferr"></p></div>
-    <div class="x-save"><div><button class="btn sec" data-x="chq">Back</button><button class="btn ok" id="xcf-save">Save cheque</button></div></div>`;
+    <div class="x-save"><div><button class="btn sec" data-xback="chq">Back</button><button class="btn ok" id="xcf-save">Save cheque</button></div></div>`;
 }
 function xChqPrint(){
   const dir = X.chqDir || 'Issued', list = (X.d.cheques || []).filter(c => c.dir === dir).sort((a, b) => a.date.localeCompare(b.date));
@@ -3162,7 +3190,7 @@ function xDocs(){
         <span class="t"><b>${esc(d.no)} · ${esc(xDocName(d.kind))}</b><small>${esc(d.site)} · ${dmy(d.date)}${xIsVal(d.kind) && d.data.pct ? ' · work done ' + d.data.pct + '%' : ''}</small><br>
         <span class="x-st ${xDocCls(st)}">${st}</span></span>
         <span class="a">${aed(d.total)}</span></button>`; }).join('') || '<div class="empty">No payment requests, certificates or tax invoices yet.</div>'}</div>
-    <div class="x-save"><div><button class="btn sec" data-x="home">Back</button>${xIsAdmin() ? `<button class="btn sec" data-xreqnew="${esc(site)}">Payment request</button><button class="btn sec" data-xdocnew="CERT">Certificate</button><button class="btn" data-xdocnew="INV">Tax invoice</button>` : ''}</div></div>`;
+    <div class="x-save"><div><button class="btn sec" data-xback="home">Back</button>${xIsAdmin() ? `<button class="btn sec" data-xreqnew="${esc(site)}">Payment request</button><button class="btn sec" data-xdocnew="CERT">Certificate</button><button class="btn" data-xdocnew="INV">Tax invoice</button>` : ''}</div></div>`;
 }
 /* the valuation of a certificate: everything to date, less what was certified before */
 function xCertCalc(f){
@@ -3264,7 +3292,7 @@ function xDocForm(){
     </div></div>
     <div class="card"><h2>${cert ? 'VALUATION' : 'TOTAL'}</h2><div class="body" id="xd-calc"></div></div>
     <p class="x-ferr" id="x-ferr"></p></div>
-    <div class="x-save"><div><button class="btn sec" data-x="docs">Cancel</button><button class="btn ok" id="xd-save">${f.id ? 'Save changes' : 'Save'}</button></div></div>`;
+    <div class="x-save"><div><button class="btn sec" data-xback="docs">Cancel</button><button class="btn ok" id="xd-save">${f.id ? 'Save changes' : 'Save'}</button></div></div>`;
   xDocCalc();
 }
 function xDocCalc(){
@@ -3302,7 +3330,7 @@ function xDocDetail(id){
         ${inv ? `<dt>Tax invoice</dt><dd>${link(inv)}</dd>` : ''}${rc ? `<dt>Certificate</dt><dd>${link(rc)} · AED ${aed(rc.total)}</dd>` : ''}${fromReq ? `<dt>Payment request</dt><dd>${link(fromReq)} · AED ${aed(fromReq.total)}</dd>` : ''}</dl>
       ${rec.length ? `<div class="x-sec">Payments received</div><div class="x-list">${rec.map(xRow).join('')}</div>` : ''}
     </div></div>
-    <div class="x-save"><div><button class="btn sec" data-x="docs">Back</button><button class="btn sec" data-xdocprint="${esc(d.id)}">Print</button>
+    <div class="x-save"><div><button class="btn sec" data-xback="docs">Back</button><button class="btn sec" data-xdocprint="${esc(d.id)}">Print</button>
       ${xIsAdmin() && live ? `${canEdit ? `<button class="btn sec" data-xdocedit="${esc(d.id)}">Edit</button>` : ''}${!rc ? `<button class="btn sec" data-xdoccancel="${esc(d.id)}" style="color:var(--danger)">Cancel</button>` : ''}${reqBtns}
         ${cert && !inv ? `<button class="btn" data-xdocinv="${esc(d.id)}">Make tax invoice</button>` : ''}${!val && st !== 'Paid' ? `<button class="btn ok" data-xdocrec="${esc(d.id)}">Record payment</button>` : ''}` : ''}</div></div>`;
   $('exp').scrollTop = 0;
@@ -3499,7 +3527,7 @@ function xNewMenu(){
     + (xIsAdmin() ? grp('Client documents', [
       it('data-xdocnew="CERT"', 'IPC', '', 'Payment certificate', 'Work done to date – its tax invoice is made automatically'),
       it('data-xdocnew="INV"', 'INV', '', 'Tax invoice only', 'For an advance or a payment without a certificate')]) : '')
-    + `<div class="x-save"><div><button class="btn sec" data-x="home">Back</button></div></div>`;
+    + `<div class="x-save"><div><button class="btn sec" data-xback="home">Back</button></div></div>`;
   document.querySelectorAll('#x-nav button').forEach(b => b.classList.remove('on'));
 }
 /* ---- matching helpers (supplier names, item names) ---- */
@@ -3603,7 +3631,7 @@ function xSitePage(code){
   const head = `<div class="x-sp-head"><small>PROJECT ${esc(code)}${s.status && s.status !== 'Active' ? ' · ' + esc(s.status).toUpperCase() : ''}</small><h2>${esc(s.project || s.client || 'Project ' + code)}</h2>
       <div>${esc([s.client && s.project ? s.client : '', s.plot ? 'Plot ' + s.plot : '', s.location, s.consultant ? 'Consultant ' + s.consultant : ''].filter(Boolean).join(' · ') || (all ? 'Tap Details to fill the project details' : ''))}</div></div>
     <div class="x-chips" style="margin:10px 0 12px;flex-wrap:nowrap;overflow-x:auto">${tabs.map(([k, t]) => `<button type="button" class="${tab === k ? 'on' : ''}" data-xptab="${k}" style="white-space:nowrap">${t}</button>`).join('')}</div>`;
-  const foot = `<div class="x-save"><div><button class="btn sec" data-x="sites">Back</button>${all ? `<button class="btn sec" data-xsitef="${esc(code)}">Details</button>` : ''}
+  const foot = `<div class="x-save"><div><button class="btn sec" data-xback="sites">Back</button>${all ? `<button class="btn sec" data-xsitef="${esc(code)}">Details</button>` : ''}
       <button class="btn" data-xdsr="${esc(code)}">Today's report</button></div></div>`;
   let body = '';
   if (tab === 'over') body = xProjOverview(code, reps, L);
@@ -4021,7 +4049,7 @@ function xSupp(){
       <span class="t"><b>${esc(s.name)}</b><small>${esc(s.type || 'Supplier')}${s.trade ? ' · ' + esc(s.trade) : ''} · billed ${aed(s.billed)} · paid ${aed(s.paid)}${s.last ? ' · last ' + dmy(s.last) : ''}</small></span>
       <span class="a ${s.bal > 0.5 ? 'out' : s.bal < -0.5 ? 'in' : ''}">${s.bal > 0.5 ? aed(s.bal) : s.bal < -0.5 ? 'adv ' + aed(-s.bal) : '0.00'}</span></button>`).join('') || '<div class="empty">No suppliers yet.</div>'}</div>
     <p class="hint">Right column = what we owe them (red). "adv" = we paid them in advance.</p>
-    <div class="x-save"><div><button class="btn sec" data-x="home">Back</button></div></div>`;
+    <div class="x-save"><div><button class="btn sec" data-xback="home">Back</button></div></div>`;
 }
 /* add / edit a supplier or subcontractor */
 function xPartyForm(name){
@@ -4070,7 +4098,7 @@ function xSuppDetail(name){
         <span class="a" style="text-align:right">${r.bill && !both ? '+' + aed(r.bill) : r.paid && !both ? '−' + aed(r.paid) : aed(r.bill)}<br><small style="font-weight:500;color:var(--muted)">bal ${aed(r.bal)}</small></span></button>`; }).join('')
       || '<div class="empty">No bills or payments yet.</div>'}</div>
     ${xSeesAll() ? `<div class="x-sec">Check their statement</div><div class="x-big"><button class="out" data-xsscan>Scan statement<small>Photo or PDF</small></button><button class="in" data-xsfile>Open Excel / CSV<small>Statement file</small></button></div>` : ''}
-    <div class="x-save"><div><button class="btn sec" data-x="supp">Back</button>${xCanBill() ? `<button class="btn sec" data-xparty="${esc(L.name)}">Edit details</button>` : ''}</div></div>`;
+    <div class="x-save"><div><button class="btn sec" data-xback="supp">Back</button>${xCanBill() ? `<button class="btn sec" data-xparty="${esc(L.name)}">Edit details</button>` : ''}</div></div>`;
   $('exp').scrollTop = 0;
 }
 /* ---------- site-wise P&L: income = tax invoices without VAT; costs = expenses + supplier bills without VAT + company labour ---------- */
@@ -4119,7 +4147,7 @@ function xPnl(){
     <div class="x-bal${T.net < 0 ? ' neg' : ''}" style="margin-top:10px"><small>COMPANY RESULT = SITE PROFIT − OVERHEADS</small><b><span>AED</span>${T.net < 0 ? '−' : ''}${aed(Math.abs(T.net))}</b>
       <div class="x-row"><div><i>Received from clients</i>${aed(T.received)}</div><div><i>Still due (incl. VAT)</i>${aed(T.due)}</div></div></div>
     <p class="hint">Income = tax invoices without VAT. Costs = expenses and supplier / subcontractor bills without VAT, plus company labour (Daily Site Report man-days × day rates). Payments against bills are not counted twice.</p>
-    <div class="x-save"><div><button class="btn sec" data-x="home">Back</button><button class="btn" data-xpnlprint="">Print / WhatsApp</button></div></div>`;
+    <div class="x-save"><div><button class="btn sec" data-xback="home">Back</button><button class="btn" data-xpnlprint="">Print / WhatsApp</button></div></div>`;
   $('exp').scrollTop = 0;
 }
 function xPnlSite(code){
@@ -4136,7 +4164,7 @@ function xPnlSite(code){
     <div class="x-list">${cats.map(([c, a]) => `<div class="x-it" style="cursor:default"><span class="t"><b>${esc(c)}</b>${xBar(a, s.cost)}</span><span class="a out">${aed(a)}</span></div>`).join('')}
       <div class="x-it" style="cursor:default"><span class="t"><b>Company labour (Daily Site Report)</b><small>${s.labDays || 0} man-days${s.rated ? '' : ' · set the day rates in Budget to cost this'}</small></span><span class="a out">${s.rated ? aed(s.labour) : '–'}</span></div>
       ${!cats.length && !s.labour ? '<div class="empty">No costs in this period.</div>' : ''}</div>
-    <div class="x-save"><div><button class="btn sec" data-x="pnl">Back</button><button class="btn sec" data-xsite="${esc(code)}">Cost sheet</button><button class="btn" data-xpnlprint="${esc(code)}">Print / WhatsApp</button></div></div>`;
+    <div class="x-save"><div><button class="btn sec" data-xback="pnl">Back</button><button class="btn sec" data-xsite="${esc(code)}">Cost sheet</button><button class="btn" data-xpnlprint="${esc(code)}">Print / WhatsApp</button></div></div>`;
   $('exp').scrollTop = 0;
 }
 function xPnlPrint(){
@@ -4242,7 +4270,7 @@ function xLetters(){
     <div class="x-filt" style="grid-template-columns:1fr 1fr;margin-top:10px"><select data-xltrf="site"><option value="">All projects</option>${sites.map(c => `<option${c === site ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select>
       <select data-xltrf="kind"><option value="">All types</option>${Object.entries(XLTR).map(([c, x]) => `<option value="${c}"${c === k ? ' selected' : ''}>${esc(x.t)}</option>`).join('')}</select></div>
     <div class="x-list">${L.map(xLtrRow).join('') || '<div class="empty">No letters yet.</div>'}</div>
-    <div class="x-save"><div><button class="btn sec" data-x="home">Back</button></div></div>`;
+    <div class="x-save"><div><button class="btn sec" data-xback="home">Back</button></div></div>`;
   $('exp').scrollTop = 0;
 }
 const xLtrRow = l => `<button class="x-it" data-xltr="${esc(l.id)}"><span class="ic ${l.kind === 'NCR' ? '' : 'tr'}">${esc((XLTR[l.kind] || XLTR.LTR).ic)}</span>
@@ -4251,7 +4279,7 @@ function xLtrMenu(){
   X.view = 'ltrnew';
   xMain().innerHTML = `<div class="x-sec">Choose the type</div><div class="x-menu">${Object.entries(XLTR).map(([c, x]) =>
       `<button data-xltrk="${c}"><i>${esc(x.ic)}</i><span><b>${esc(x.t)}</b><small>${esc(x.sub)}</small></span></button>`).join('')}</div>
-    <div class="x-save"><div><button class="btn sec" data-x="letters">Back</button></div></div>`;
+    <div class="x-save"><div><button class="btn sec" data-xback="letters">Back</button></div></div>`;
 }
 function xLtrNew(kind, site){
   const f = { kind, site: site || X.ltrSite || '', date: today(), to: '', subject: '', data: { attn: '', cc: '', photos: [], events: kind === 'EOT' ? [{ cause: '', from: '', to: '', days: '' }] : [] } };
@@ -4305,7 +4333,7 @@ function xLtrDetail(id){
     ${l.kind === 'EOT' ? `<div class="x-bal"><small>DAYS CLAIMED</small><b>${esc(l.data.daysClaimed || 0)}<span> days</span></b><div class="x-row"><div><i>Completion now</i>${l.data.origCompletion ? dmy(l.data.origCompletion) : '–'}</div><div><i>Requested</i>${l.data.newCompletion ? dmy(l.data.newCompletion) : '–'}</div></div></div>` : ''}
     <div class="card"><div class="body"><p style="white-space:pre-wrap;margin:0">${esc(l.data.body || '')}</p></div></div>
     ${mine ? `<div class="x-sec">Status: ${esc(l.status)}</div><div class="x-chips">${XLTR_ST.map(s => `<button type="button" class="${l.status === s ? 'on' : ''}" data-xlst="${s}">${s}</button>`).join('')}</div>` : ''}
-    <div class="x-save"><div><button class="btn sec" data-x="letters">Back</button>${mine ? `<button class="btn sec" data-xltredit>Edit</button>` : ''}<button class="btn" data-xltrprint>Print / WhatsApp</button></div></div>`;
+    <div class="x-save"><div><button class="btn sec" data-xback="letters">Back</button>${mine ? `<button class="btn sec" data-xltredit>Edit</button>` : ''}<button class="btn" data-xltrprint>Print / WhatsApp</button></div></div>`;
   $('exp').scrollTop = 0;
 }
 /* printout on the letterhead (A4) */
@@ -4406,13 +4434,15 @@ function xSuppRecPrint(){
 $('exp').addEventListener('click', async e => {
   const b = e.target.closest('button,[data-x]'); if (!b) return;
   const D = b.dataset;
-  if ('xhome' in D) { if (history.state === 'app') history.back(); else goHome(); return; }
+  if ('xhome' in D) { if (history.state === 'app') { X.goingHome = true; history.back(); } else goHome(); return; }
+  if (D.xback != null) { if (xBack()) return;                         // nothing left to go back to: out to the Al Tarwi home
+    if (history.state === 'app') { X.goingHome = true; history.back(); } else goHome(); return; }
   if (D.x) { if (X.view === 'form' && !await ask('Leave this form? What you typed will be lost.', 'Leave')) return; X.f = null; xGo(D.x); return; }
   if ('xretry' in D) { xMain().innerHTML = '<div class="empty">Loading…</div>'; xLoad(); return; }
   if (b.id === 'x-go') {
     const p = $('x-pin').value.trim(); if (!p) { $('x-err').textContent = 'Enter your PIN.'; return; }
     b.disabled = true; b.textContent = 'Checking…';
-    try { await server('expLogin', p); X.pin = p; keep('exp.pin', p); xMain().innerHTML = '<div class="empty">Loading…</div>'; X.view = 'home'; await xLoad(); }
+    try { await server('expLogin', p); X.pin = p; keep('exp.pin', p); xMain().innerHTML = '<div class="empty">Loading…</div>'; X.view = 'loading'; await xLoad(); }
     catch (er) { $('x-err').textContent = errText(er); b.disabled = false; b.textContent = 'Open'; }
     return;
   }
