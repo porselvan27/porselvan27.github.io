@@ -2069,7 +2069,7 @@ function xAdvPrint(){
     <tbody>${due.map((p, i) => `<tr><td>${i + 1}</td><td>${esc(p.name)}</td><td class="n">${aed(p.given)}</td><td class="n">${aed(p.back)}</td><td class="n"><b>${aed(p.due)}</b></td><td></td></tr>`).join('') || '<tr><td colspan="6">Nothing outstanding.</td></tr>'}</tbody>
     <tfoot><tr><td></td><td>Total</td><td class="n">${aed(due.reduce((s, p) => s + p.given, 0))}</td><td class="n">${aed(due.reduce((s, p) => s + p.back, 0))}</td><td class="n">${aed(due.reduce((s, p) => s + p.due, 0))}</td><td></td></tr></tfoot></table>
     <div class="sig"><div>Prepared by</div><div>Checked by</div><div>Approved by (MD)</div></div>
-    <p class="ft">Printed ${dmy(today())} from the Al Tarwi app · Al Tarwi Building Contracting · Trade License No. 53254 · Al Dhait, Ras Al Khaimah</p></div>`;
+    <p class="ft">Printed ${dmy(today())} from the Al Tarwi app · Al Tarwi Building Contracting · Trade License No. 53254 · Al Dahan, Ras Al Khaimah</p></div>`;
   waitImages($('sheet')).then(() => print());
 }
 /* ---------- own-pocket payments to reimburse ---------- */
@@ -2201,7 +2201,7 @@ function xCostPrint(){
       return `<tr><td>${dmy(t.date)}</td><td>${esc(t.voucher)}</td><td>${esc(t.cat)}</td><td>${esc([t.item, t.party].filter(Boolean).join(' – '))}${(t.splits || []).length ? ' (share)' : ''}</td><td class="n">${aed(a)}</td></tr>`; }).join('') || '<tr><td colspan="5">No expenses.</td></tr>'}
     </tbody><tfoot><tr><td colspan="4">Total expenses</td><td class="n">${aed(s.total)}</td></tr></tfoot></table>
     <div class="sig"><div>Prepared by</div><div>Checked by</div><div>Approved by (MD)</div></div>
-    <p class="ft">Printed ${dmy(today())} from the Al Tarwi app · Al Tarwi Building Contracting · Trade License No. 53254 · Al Dhait, Ras Al Khaimah</p></div>`;
+    <p class="ft">Printed ${dmy(today())} from the Al Tarwi app · Al Tarwi Building Contracting · Trade License No. 53254 · Al Dahan, Ras Al Khaimah</p></div>`;
   waitImages($('sheet')).then(() => print());
 }
 /* ---------- vehicle costs ---------- */
@@ -2572,7 +2572,7 @@ function xSumPrint(){
     .ds img{width:100%;height:24mm;object-fit:contain;border-bottom:3px solid #c9a227}.ds h1{background:#0b2a5b;color:#fff;font:700 13pt Arial;letter-spacing:.06em;margin:0 0 8px;padding:6px 10px}
     .ds pre{font:9.5pt/1.5 Consolas,monospace;white-space:pre-wrap;margin:0}.ds .ft{margin-top:10px;font-size:8pt;color:#5d6a7e}</style>
     <div class="ds">${prHead('DAILY SUMMARY', dmy(s.date))}<pre>${esc(s.text.split('\n').slice(2).join('\n'))}</pre>
-    <p class="ft">Printed ${dmy(today())} from the Al Tarwi app · Al Tarwi Building Contracting · Trade License No. 53254 · Al Dhait, Ras Al Khaimah</p></div>`;
+    <p class="ft">Printed ${dmy(today())} from the Al Tarwi app · Al Tarwi Building Contracting · Trade License No. 53254 · Al Dahan, Ras Al Khaimah</p></div>`;
   waitImages($('sheet')).then(() => print());
 }
 
