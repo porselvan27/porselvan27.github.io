@@ -2344,7 +2344,11 @@ function xDetail(id){
         ${dd('Approved by', t.apBy)}${dd('Rejected because', t.rejReason)}${dd('Cancelled', t.cancelReason)}</dl>
       ${locked ? '<p class="x-md" style="margin-top:12px">This month is closed – the entry cannot be changed.</p>' : ''}
       ${t.status === 'Rejected' && can ? '<p class="x-warn" style="margin-top:12px">Rejected by the MD. Correct it with Edit and save – it goes back to the MD. Until then this cash is not accounted for.</p>' : ''}
-      ${(t.receipts || []).length ? `<div class="x-sec">Receipts</div><div class="x-rc">${t.receipts.map(p => `<a class="ph" href="${viewUrl(p)}" target="_blank" rel="noopener"><img src="${thumb(p, 400)}" alt="Receipt"></a>`).join('')}</div>` : ''}
+      ${(t.receipts || []).length ? `<div class="x-sec">Receipts</div><div class="x-rc">${t.receipts.map(p => `<a class="ph" href="${viewUrl(p)}" target="_blank" rel="noopener"><img src="${thumb(p, 400)}" alt="Receipt"></a>`).join('')}</div>
+        ${(() => { const m = String(t.remarks || '').match(/(?:Arabic bill – translation|Translation): (.*)$/);
+          return (m ? `<div class="x-next" style="margin-top:10px"><b>English translation</b><p style="margin:6px 0 0;white-space:pre-wrap">${esc(m[1])}</p></div>` : '')
+            + ((t.receipts || []).some(p => p && p.id) && (mine || xSeesAll()) && t.status !== 'Cancelled'
+              ? `<button class="btn sec" data-xtrans="${esc(t.id)}" style="margin-top:10px;width:100%">${m ? 'Translate again' : 'Translate receipt to English'}</button>` : ''); })()}` : ''}
       ${tlHtml}
     </div></div>
     <div class="x-save"><div><button class="btn sec" data-xbackto="${X.prev === 'appr' ? 'appr' : 'list'}">Back</button>
@@ -4136,6 +4140,10 @@ $('exp').addEventListener('click', async e => {
   }
   if (D.xfs) { X.filt = { month: '', site: '', cat: '', status: D.xfs, q: '' }; return xGo('list'); }
   if (D.xaddrc2) { X.addRc = D.xaddrc2; $('x-photo').click(); return; }
+  if (D.xtrans) { const id = D.xtrans; b.disabled = true; b.textContent = 'Translating…';
+    try { X.d = await server('expTranslate', id, X.pin); keep('exp.cache', X.d); toast('Receipt translated'); xDetail(id); }
+    catch (er) { toast(errText(er)); b.disabled = false; b.textContent = 'Translate receipt to English'; }
+    return; }
   if (D.xsday) { const d = new Date((X.sumDate || today()) + 'T12:00:00'); d.setDate(d.getDate() + +D.xsday);
     const v = d.toISOString().slice(0, 10); if (v > today()) return; X.sumDate = v; xSum(); return; }
   if ('xsprint' in D) return xSumPrint();
