@@ -1948,8 +1948,8 @@ function openExp(){
   xLoad();
 }
 /* screens xGo can draw by itself (lists and pages). Forms and detail screens are left alone when fresh data arrives. */
-const XVIEWS = new Set(['home', 'list', 'appr', 'count', 'adv', 'reimb', 'cost', 'budget', 'veh', 'bank', 'chq', 'docs', 'sites', 'new', 'site', 'supp', 'suppd', 'pnl', 'pnld', 'letters', 'ltrd', 'ltrnew', 'brec', 'srec', 'miss', 'sum']);
-const XPROJ = new Set(['sites', 'site', 'sitef', 'actf']);
+const XVIEWS = new Set(['home', 'list', 'appr', 'count', 'adv', 'reimb', 'cost', 'budget', 'veh', 'bank', 'chq', 'docs', 'sites', 'new', 'site', 'supp', 'suppd', 'pnl', 'pnld', 'letters', 'ltrd', 'ltrnew', 'brec', 'srec', 'miss', 'sum', 'paysch']);
+const XPROJ = new Set(['sites', 'site', 'sitef', 'actf', 'paysch']);
 function xLoad(){
   return server('expAll', X.pin).then(d => { X.d = d; keep('exp.cache', d);
       const v = X.view;
@@ -1985,7 +1985,7 @@ function xGo(v){
   else if (v === 'count') xCount(); else if (v === 'adv') xAdv(); else if (v === 'reimb') xReimb();
   else if (v === 'cost') xCost(); else if (v === 'budget') xBudget(); else if (v === 'veh') xVeh();
   else if (v === 'bank') { if (was !== 'bank' && was !== 'detail' && was !== 'chqd') X.bankSel = ''; xBank(); } else if (v === 'chq') xChq();
-  else if (v === 'docs') xDocs(); else if (v === 'sites') xSites(); else if (v === 'new') xNewMenu(); else if (v === 'site') xSitePage(X.siteCode);
+  else if (v === 'docs') xDocs(); else if (v === 'sites') xSites(); else if (v === 'new') xNewMenu(); else if (v === 'site') xSitePage(X.siteCode); else if (v === 'paysch') xPaySch(X.siteCode);
   else if (v === 'supp') xSupp(); else if (v === 'suppd') xSuppDetail(X.suppName); else if (v === 'pnl') xPnl(); else if (v === 'pnld') xPnlSite(X.pnlSite);
   else if (v === 'letters') xLetters(); else if (v === 'ltrd') xLtrDetail(X.ltrId); else if (v === 'ltrnew') xLtrMenu(); else if (v === 'brec') xBankRec(); else if (v === 'srec') xSuppRec();
   else if (v === 'miss') xMiss(); else if (v === 'sum') { if (was !== 'sum') { X.sum = {}; X.sumDate = today(); } xSum(); }
@@ -2883,7 +2883,7 @@ async function docOut(name, kind){
 }
 async function docMakePdf(){
   await pdfLibs(); await new Promise(r => setTimeout(r, 60));
-  const page = $('sheet').querySelector('.doc-page'), target = page.querySelector('.lh') || page.querySelector('.wp') || page.querySelector('.doc-inner') || page;
+  const page = $('sheet').querySelector('.doc-page'), target = page.querySelector('.lh') || page.querySelector('.wp') || page.querySelector('.ps') || page.querySelector('.doc-inner') || page;
   const land = DOC.kind === 'a4l';
   const canvas = await html2canvas(target, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false, windowWidth: land ? 1500 : 1100,
     onclone: d => { d.body.classList.add('docshot'); const p = d.querySelector('#sheet .doc-page'); if (p) p.style.zoom = 1; } });
@@ -3730,6 +3730,8 @@ function xProjMoney(code){
   const man = r => (r.co || []).reduce((n, x) => n + num(x.skilled) + num(x.unskilled), 0) + (r.sub || []).reduce((n, x) => n + num(x.skilled) + num(x.unskilled), 0);
   return `<div class="x-stats"><div><b>${aed(m.inv)}</b><small>Invoiced</small></div><div><b>${aed(m.rec)}</b><small>Received</small></div><div><b class="${m.due > 0 ? 'neg' : ''}">${aed(m.due)}</b><small>Still due</small></div></div>
     ${rev ? `<p class="hint" style="margin:8px 0 0">Contract AED ${aed(rev)} · work done ${pct}% (last certificate)</p>` : ''}
+    ${xSeesAll() ? (() => { const ps = xPs(code), c = ps ? xPayCalc(ps, xPsContract(code)) : null;
+      return `<button class="x-it" data-x="paysch" style="margin-top:10px"><span class="ic tr">%</span><span class="t"><b>Stage payment schedule</b><small>${c ? c.rows.filter(r => r.status === 'Paid').length + ' of ' + c.rows.filter(r => r.pct > 0).length + ' stages paid · received ' + aed(c.received) + (c.appliedAmt ? ' · applied ' + aed(c.appliedAmt) : '') : 'Not set up – stages %, maintenance, owner advance, consultant'}</small></span></button>`; })() : ''}
     <div class="x-big" style="margin-top:10px">${xIsAdmin() ? `<button class="rq" data-xreqnew="${esc(code)}">Payment request<small>Ask the client – from progress</small></button><button class="in" data-xnewsite="CLIENT RECEIPT">Client paid<small>Receipt voucher</small></button>` : ''}
       ${xCanAdd() || xCanBill() ? `<button class="out" data-xnewsite="EXPENSE">+ Expense<small>For this project</small></button>` : ''}</div>
     ${fold('Money from the client', docs.length + ' documents · ' + recs.length + ' payments', `
@@ -3745,6 +3747,164 @@ function xProjMoney(code){
     ${fold('Latest expenses', exps.length + ' entries', `<div class="x-list">${exps.slice(0, 8).map(xRow).join('') || '<div class="empty">None yet.</div>'}</div>`)}`;
 }
 
+/* =================== STAGE PAYMENT SCHEDULE (bank / SZHP funded projects) ===================
+   gross = stage % × contract · VAT added on top · maintenance % of gross held every stage · balance = gross − maintenance
+   owner return = % of balance until the owner advance is recovered · consultant recovery = % of balance until (fee % × contract − advance already paid to consultant)
+   net = balance − owner return − consultant (+ VAT). Worked out unrounded, shown rounded – the same way as the signed schedule. */
+const XPS_STAGES = [['Preliminary works, Excavation and Back filling', 4], ['Substructure works with insulation', 14], ['Super Structure G.F Slab', 10],
+  ['Super Structure F.F Slab and parapet', 12], ['Block work', 6], ['Plaster External', 3], ['Plaster Internal', 4], ['Tile Works (walls, floors & staircase)', 6],
+  ['Paint Works (Interior & Exterior)', 5], ['Carpentry (Joinery) Works', 5], ['Water proofing (insulation)', 3], ['Aluminum, Glass and Railings', 6], ['Electrical Works', 8],
+  ['Plumbing works and Sanitary ware', 7], ['Boundary wall, External works and Gates', 7], ['Air Conditions work (By Owner)', 0]];
+const xPs = code => ((X.d && X.d.paysch) || {})[code] || null;
+const xPsContract = code => { const s = xSite(code) || {}; return xr2(s.contract) + xr2(s.variations); };
+function xPayCalc(ps, contract){
+  const C = +contract || 0, n = k => +ps[k] || 0, E = 0.005;
+  const retCap = n('advance'), consCap = Math.max(0, C * n('consFeePct') / 100 - n('advToCons'));
+  let retSum = 0, consSum = 0, retDoneAt = '', consDoneAt = '';
+  const rows = (ps.stages || []).map((s, i) => {
+    const gross = C * (+s.pct || 0) / 100, vat = gross * n('vatPct') / 100, maint = gross * n('maintPct') / 100, bal = gross - maint;
+    const ret = retCap > 0 ? Math.min(bal * n('ownerRetPct') / 100, Math.max(0, retCap - retSum)) : 0; retSum += ret;
+    const cons = consCap > 0 ? Math.min(bal * n('consPct') / 100, Math.max(0, consCap - consSum)) : 0; consSum += cons;
+    const retDone = retCap > 0 && retSum >= retCap - E, consDone = consCap > 0 && consSum >= consCap - E;
+    const retEnd = ret > E && retDone && !retDoneAt, consEnd = cons > E && consDone && !consDoneAt;
+    if (retEnd) retDoneAt = s.name; if (consEnd) consDoneAt = s.name;
+    const label = !gross ? 'Not in contract' : retCap <= 0 ? 'Progress payment' : (ret > E && !retDone ? 'Recovering Advance' : 'Advance Fully Recovered') + (consEnd ? ' / Consultant Balance Complete' : '');
+    return { i, name: s.name, pct: +s.pct || 0, gross, vat, maint, bal, ret, cons, net: bal - ret - cons, netVat: bal - ret - cons + vat, label, status: s.status || '', date: s.date || '', ref: s.ref || '' };
+  });
+  const T = k => rows.reduce((a, r) => a + r[k], 0), tot = { pct: T('pct'), gross: T('gross'), vat: T('vat'), maint: T('maint'), bal: T('bal'), ret: T('ret'), cons: T('cons'), net: T('net'), netVat: T('netVat') };
+  const near = (a, b) => Math.abs(a - b) < 0.005;
+  const checks = [['Stage % total = 100%', near(tot.pct, 100), xr2(tot.pct) + '%'], ['Gross total = contract', near(tot.gross, C), aed(tot.gross)],
+    ['VAT total = ' + n('vatPct') + '% of contract', near(tot.vat, C * n('vatPct') / 100), aed(tot.vat)], ['Maintenance total = ' + n('maintPct') + '% of contract', near(tot.maint, C * n('maintPct') / 100), aed(tot.maint)]];
+  if (retCap > 0) checks.push(['Owner return total = advance ' + aed(retCap), near(tot.ret, retCap), aed(tot.ret) + (retDoneAt ? ' · ends at ' + retDoneAt : '')]);
+  if (consCap > 0) checks.push(['Consultant recovery total = ' + aed(consCap), near(tot.cons, consCap), aed(tot.cons) + (consDoneAt ? ' · ends at ' + consDoneAt : '')]);
+  const advNet = Math.max(0, n('advance') - n('advToCons')), paid = rows.filter(r => r.status === 'Paid'), applied = rows.filter(r => r.status === 'Applied');
+  return { C, rows, tot, checks, retCap, consCap, retDoneAt, consDoneAt, advNet,
+    consTotal: n('advToCons') + tot.cons, netConstruction: tot.netVat + advNet,
+    received: (ps.advStatus === 'Paid' ? advNet : 0) + paid.reduce((a, r) => a + r.netVat, 0), appliedAmt: applied.reduce((a, r) => a + r.netVat, 0) };
+}
+/* consultant rate that ends the recovery exactly at a chosen stage: balance to cap ÷ balances up to that stage */
+function xPsConsRate(ps, contract, upto){
+  const C = +contract || 0, cap = Math.max(0, C * (+ps.consFeePct || 0) / 100 - (+ps.advToCons || 0));
+  const bal = (ps.stages || []).slice(0, upto + 1).reduce((a, s) => a + C * (+s.pct || 0) / 100 * (1 - (+ps.maintPct || 0) / 100), 0);
+  return bal ? cap / bal * 100 : 0;
+}
+const xPsBadge = st => `<span class="x-st ${st === 'Paid' ? 'Approved' : st === 'Applied' ? 'Confirmed' : 'Pending'}">${st === 'Applied' ? 'Applied to bank' : st || 'Planned'}</span>`;
+function xPaySch(code){
+  X.view = 'paysch'; X.siteCode = code;
+  const ps = xPs(code), si = xSite(code) || {};
+  if (!ps) { xMain().innerHTML = `<div class="card"><div class="body"><b>No payment schedule for ${esc(code)} yet</b>
+      <p class="hint">For bank / SZHP funded villas: payment by stage %, VAT added on top, maintenance held every stage, owner advance and consultant fee recovered from the stages.</p>
+      ${xIsAdmin() ? `<button class="btn ok" data-xpsnew="${esc(code)}" style="width:100%">Create from the standard 16-stage schedule</button>` : '<p class="hint">Only the admin can create it.</p>'}</div></div>
+    <div class="x-save"><div><button class="btn sec" data-xback="site">Back</button></div></div>`; return; }
+  const c = xPayCalc(ps, xPsContract(code)), ok = c.checks.every(k => k[1]);
+  xMain().innerHTML = `<div class="x-bal"><small>STAGE PAYMENT SCHEDULE · ${esc(code)}${ps.funding ? ' · ' + esc(ps.funding) : ''}</small><b>AED ${aed(c.C)}<span> excl. VAT</span></b>
+      <div class="x-row"><div><i>Received</i>${aed(c.received)}</div><div><i>Applied, waiting</i>${aed(c.appliedAmt)}</div><div><i>Net in construction</i>${aed(c.netConstruction)}</div></div>${xBar(c.received, c.netConstruction || 1)}</div>
+    <div class="x-stats" style="margin-top:10px"><div><b>${aed(c.tot.maint)}</b><small>Maintenance held</small></div><div><b>${aed(c.tot.ret)}</b><small>Returned to owner</small></div><div><b>${aed(c.consTotal)}</b><small>Consultant</small></div></div>
+    <div class="card" style="margin-top:10px"><div class="body" style="padding:10px 14px">${xPsChkHtml(c)}</div></div>
+    ${ok ? '' : '<p class="x-warn">A check does not match – open Edit and correct the % or rates.</p>'}
+    <div class="x-sec">Stages <span class="hint" style="font-weight:500">tap a stage to mark it applied / paid</span></div>
+    <div class="x-list">
+      ${+ps.advance ? `<button class="x-it" data-xpstg="adv"><span class="ic in">0</span><span class="t"><b>Owner advance${+ps.advToCons ? ` (AED ${aed(ps.advToCons)} to consultant)` : ''}</b><small>Net to contractor ${aed(c.advNet)}${ps.advDate ? ' · ' + dmy(ps.advDate) : ''}</small><br>${xPsBadge(ps.advStatus)}</span><span class="a">${aed(ps.advance)}</span></button>` : ''}
+      ${c.rows.map(r => `<button class="x-it" data-xpstg="${r.i}"><span class="ic ${r.status === 'Paid' ? 'in' : r.status === 'Applied' ? 'tr' : ''}">${r.i + 1}</span>
+        <span class="t"><b>${esc(r.name)} · ${xr2(r.pct)}%</b><small>Gross ${aed(r.gross)} · net ${aed(r.net)} + VAT ${aed(r.vat)}${r.ret > 0.005 ? ' · owner return ' + aed(r.ret) : ''}${r.cons > 0.005 ? ' · consultant ' + aed(r.cons) : ''}</small>
+        <small>${esc(r.label)}${r.ref ? ' · ' + esc(r.ref) : ''}${r.date ? ' · ' + dmy(r.date) : ''}</small>${xPsBadge(r.status)}</span><span class="a">${aed(r.netVat)}</span></button>`).join('')}</div>
+    <p class="hint">Amounts on the right = net payable to the contractor incl. VAT (as on the signed schedule). Totals: gross ${aed(c.tot.gross)} · VAT ${aed(c.tot.vat)} · net incl. VAT ${aed(c.tot.netVat)}.</p>
+    <div class="x-save"><div><button class="btn sec" data-xback="site">Back</button>${xIsAdmin() ? `<button class="btn sec" data-xpsedit="${esc(code)}">Edit</button>` : ''}<button class="btn" data-xpsprint="${esc(code)}">Print / WhatsApp</button></div></div>`;
+}
+/* edit: settings + stages */
+function xPaySchForm(code){
+  const ps = JSON.parse(JSON.stringify(xPs(code) || xPsTemplate())); X.psf = { code, ps }; X.view = 'payschf';
+  const f = (k, l, ph, more) => `<div><label for="xpf-${k}">${l}</label><input id="xpf-${k}" data-xpf="${k}" value="${esc(ps[k] == null ? '' : ps[k])}" placeholder="${esc(ph || '')}" ${more || 'inputmode="decimal"'}></div>`;
+  xMain().innerHTML = `<div class="x-form"><div class="card"><h2>PAYMENT SCHEDULE · ${esc(code)}</h2><div class="body">
+      <p class="hint" style="margin-top:0">Contract value comes from the project details: AED ${aed(xPsContract(code))} excl. VAT.</p>
+      ${f('funding', 'Funding (printed)', 'e.g. Sheikh Zayed Housing Programme (ADIB)', '')}
+      <div class="x-two">${f('vatPct', 'VAT % (added on top)')}${f('maintPct', 'Maintenance / retention % (every stage)')}</div>
+      <div class="x-two">${f('advance', 'Owner advance (AED)', '0')}${f('advToCons', 'Of which paid to consultant (AED)', '0')}</div>
+      <div class="x-two">${f('ownerRetPct', 'Owner return % (of balance)')}${f('consFeePct', 'Consultant fee % (of contract)')}</div>
+      <div>${f('consPct', 'Consultant recovery % (of balance)', 'e.g. 7.411919991877')}</div>
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap"><div style="flex:1;min-width:180px"><label for="xpf-upto">Work out the recovery % so it ends at</label>
+        <select id="xpf-upto">${ps.stages.map((s, i) => `<option value="${i}">${i + 1}. ${esc(s.name)}</option>`).join('')}</select></div><button type="button" class="btn sec" data-xpfrate>Work it out</button></div>
+    </div></div>
+    <div class="card"><h2>STAGES</h2><div class="body" id="xpf-st">${xPsStageRows(ps)}</div></div>
+    <div class="card"><h2>CHECKS</h2><div class="body" id="xpf-chk"></div></div><p class="x-ferr" id="xpf-err"></p></div>
+    <div class="x-save"><div><button class="btn sec" data-xback="paysch">Cancel</button><button class="btn ok" id="xpf-save">Save</button></div></div>`;
+  xPsChecks(); $('exp').scrollTop = 0;
+}
+const xPsStageRows = ps => ps.stages.map((s, i) => `<div class="x-ln" style="grid-template-columns:1fr 70px 34px"><input data-xps="${i}|name" value="${esc(s.name)}" aria-label="Stage ${i + 1}"><input data-xps="${i}|pct" value="${esc(s.pct)}" inputmode="decimal" aria-label="% of contract"><button type="button" data-xpsdel="${i}" aria-label="Remove stage">×</button></div>`).join('')
+  + `<button type="button" class="btn sec" data-xpsadd style="justify-self:start;margin-top:6px">+ Stage</button>`;
+function xPsChecks(){ const A = X.psf, el = $('xpf-chk'); if (!A || !el) return; const c = xPayCalc(A.ps, xPsContract(A.code));
+  el.innerHTML = xPsChkHtml(c); }
+const xPsChkHtml = c => c.checks.map(([t, pass, v]) => { const [amt, end] = String(v).split(' · ');
+  return `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px">
+    <span style="flex:1;min-width:0">${pass ? '✓' : '✗'} ${esc(t)}${end ? `<br><small class="hint">${esc(end)}</small>` : ''}</span><b style="color:${pass ? 'var(--ok)' : 'var(--danger)'};white-space:nowrap">${esc(amt)}</b></div>`; }).join('');
+const xPsTemplate = () => ({ funding: '', vatPct: 5, maintPct: 10, advance: 0, advToCons: 0, ownerRetPct: 26, consFeePct: 0, consPct: 0, advStatus: '', advDate: '',
+  stages: XPS_STAGES.map(([name, pct]) => ({ name, pct, status: '', date: '', ref: '' })) });
+/* one stage: breakdown + status */
+function xPayStage(code, i){
+  const ps = xPs(code), c = xPayCalc(ps, xPsContract(code)), adv = i === 'adv', r = adv ? null : c.rows[+i];
+  X.pst = { code, i, status: adv ? ps.advStatus || '' : r.status, date: (adv ? ps.advDate : r.date) || today(), ref: adv ? '' : r.ref }; X.view = 'paystg';
+  const row = (k, v, cl) => `<div class="x-vrow ${cl || ''}"><span>${k}</span><b>${v}</b></div>`;
+  xMain().innerHTML = `<div class="x-form"><div class="card"><h2>${adv ? 'OWNER ADVANCE' : 'STAGE ' + (r.i + 1) + ' · ' + xr2(r.pct) + '%'}</h2><div class="body">
+      ${adv ? row('Owner advance', aed(ps.advance)) + row('Paid to consultant', '−' + aed(ps.advToCons), 'neg') + row('Net to contractor', 'AED ' + aed(c.advNet), 'grand')
+        : `<b>${esc(r.name)}</b>` + row('Gross (' + xr2(r.pct) + '% of ' + aed(c.C) + ')', aed(r.gross)) + row('Maintenance ' + xr2(ps.maintPct) + '% held', '−' + aed(r.maint), 'neg') + row('Balance', aed(r.bal))
+          + row('Owner return', '−' + aed(r.ret), 'neg') + row('Consultant recovery', '−' + aed(r.cons), 'neg') + row('Net excl. VAT', aed(r.net)) + row('VAT ' + xr2(ps.vatPct) + '% (on gross)', aed(r.vat)) + row('Net payable incl. VAT', 'AED ' + aed(r.netVat), 'grand')
+          + `<p class="hint" style="margin:6px 0 0">${esc(r.label)}</p>`}
+    </div></div>
+    ${xIsAdmin() ? `<div class="card"><h2>STATUS</h2><div class="body">
+      <div><label for="xpt-status">Status</label><select id="xpt-status" data-xpt="status">${[['', 'Planned'], ['Applied', 'Applied to bank'], ['Paid', 'Paid / received']].map(([v, l]) => `<option value="${v}"${v === X.pst.status ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div class="x-two"><div><label for="xpt-date">Date</label><input type="date" id="xpt-date" data-xpt="date" value="${esc(X.pst.date)}"></div>
+        ${adv ? '<div></div>' : `<div><label for="xpt-ref">Bill / payment ref.</label><input id="xpt-ref" data-xpt="ref" value="${esc(X.pst.ref)}" placeholder="e.g. Payment 1"></div>`}</div></div></div>` : ''}
+    <p class="x-ferr" id="xpt-err"></p></div>
+    <div class="x-save"><div><button class="btn sec" data-xback="paysch">Back</button>${xIsAdmin() ? '<button class="btn ok" id="xpt-save">Save status</button>' : ''}</div></div>`;
+  $('exp').scrollTop = 0;
+}
+/* printed PROGRESS PAYMENT SCHEDULE (A4 landscape, same layout as the signed schedule) */
+async function xPsPrint(code){
+  const ps = xPs(code); if (!ps) return; const si = xSite(code) || {}, c = xPayCalc(ps, xPsContract(code)), logo = await lhLogo(), sch = xSch(code);
+  const rows = c.rows.filter(r => r.pct > 0), d = v => v > 0.004 ? aed(v) : '–';
+  const kv = list => list.filter(Boolean).map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('');
+  $('sheet').innerHTML = `<style>
+    @page{size:A4 landscape;margin:6mm}
+    #sheet .ps{width:285mm;font:7pt/1.18 Arial,'Segoe UI',sans-serif;color:#18212f;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    #sheet .ps-h{display:flex;align-items:center;gap:4mm;margin-bottom:1.4mm}#sheet .ps-h img{height:9mm}#sheet .ps-h b{font:800 9pt Arial;color:#1F2A6B;line-height:1.1}#sheet .ps-h b span{display:block;color:#1D7FD1;font-weight:700}
+    #sheet .ps-h h1{flex:1;text-align:center;margin:0;font:800 13pt Arial;letter-spacing:.03em;color:#111}
+    #sheet .ps-g{display:grid;grid-template-columns:1fr 1.1fr;gap:4mm}
+    #sheet .ps-k{width:100%;border-collapse:collapse}#sheet .ps-k caption{background:#1f3864;color:#fff;font:700 7.8pt Arial;text-align:left;padding:1mm 2.4mm}
+    #sheet .ps-k th,#sheet .ps-k td{border:.2mm solid #c9d2e0;padding:.55mm 2mm;text-align:left;font-size:6.9pt;line-height:1.15}#sheet .ps-k th{background:#f2f4f8;width:48%}#sheet .ps-k td.b{color:#1a3fbf}
+    #sheet .ps-sec{font:800 8pt Arial;color:#1f3864;margin:1.6mm 0 .8mm}
+    #sheet table.ps-t{width:100%;border-collapse:collapse;table-layout:fixed}
+    #sheet .ps-t th{background:#1f3864;color:#fff;font-size:6.3pt;padding:.8mm .8mm;line-height:1.1;border:.2mm solid #34507e}
+    #sheet .ps-t td{border:.2mm solid #d3dae6;padding:.45mm 1.1mm;font-size:6.9pt;line-height:1.15}#sheet .ps-t td.n{text-align:right;font-variant-numeric:tabular-nums}
+    #sheet .ps-t tr.adv td{background:#fdf2d0;font-weight:700}#sheet .ps-t tr.done td{background:#e6f1df}#sheet .ps-t td.st{color:#1f3864;font-weight:700;font-size:6.4pt;text-align:center}
+    #sheet .ps-t tr.tot td{background:#d9d9d9;font-weight:800}
+    #sheet .ps-b{display:grid;grid-template-columns:repeat(4,1fr);margin-top:0}#sheet .ps-b div{color:#fff;text-align:center;padding:1.6mm;font:700 7pt Arial}#sheet .ps-b b{display:block;font:800 10pt Arial}
+    #sheet .ps-s{display:grid;grid-template-columns:repeat(3,1fr);border:.2mm solid #c9d2e0;border-top:0}#sheet .ps-s div{padding:1.2mm 3mm;border-left:.2mm solid #c9d2e0;font-size:7.2pt;line-height:1.75}#sheet .ps-s div:first-child{border-left:0}
+    #sheet .ps-n{font-size:6pt;color:#4a5a70;font-style:italic;margin-top:1mm}
+  </style>
+  <div class="ps">
+    <div class="ps-h"><img src="${logo || LOGO}" alt=""><b>AL TARWI<span>BUILDING CONTRACTING</span></b><h1>PROGRESS PAYMENT SCHEDULE</h1><div style="width:42mm;text-align:right;font-size:6.8pt;color:#4a5a70">${esc(code)} · ${dmy(today())}</div></div>
+    <div class="ps-g">
+      <table class="ps-k"><caption>PROJECT &amp; CONTRACT INFORMATION</caption>${kv([['Owner (Client)', esc(si.client || '')], ['Contractor', 'Al Tarwi Building Contracting (License No. ' + esc((X.d.settings || {}).licence || '53254') + ')'], ['Consultant', esc(si.consultant || '')],
+        ps.funding ? ['Funding Programme', esc(ps.funding)] : null, ['Plot No.', esc(si.plot || '')], ['Location', esc(si.location || '')], ['Contract Duration', sch && sch.months ? sch.months + ' months from ' + dmy(sch.start) : 'From Site Handover / Commencement Order']])}</table>
+      <table class="ps-k"><caption>PROJECT FINANCING (Total Excl. VAT – VAT Added Extra)</caption>${kv([['Total Contract Value (Excl. VAT)', 'AED ' + aed(c.C)], +ps.advance ? ['Owner Advance (fixed, paid first)', '<span style="color:#1a3fbf">AED ' + aed(ps.advance) + '</span>'] : null,
+        ['Maintenance / Retention % (held every payment)', '<span style="color:#1a3fbf">' + xr2(ps.maintPct) + '%</span>'], +ps.advance ? ['Owner Return % (of balance, until Advance recovered)', '<span style="color:#1a3fbf">' + xr2(ps.ownerRetPct) + '%</span>'] : null,
+        +ps.consFeePct ? ['Consultant Fee % (of Total, Excl. VAT)', '<span style="color:#1a3fbf">' + xr2(ps.consFeePct) + '% = AED ' + aed(c.C * ps.consFeePct / 100) + '</span>'] : null,
+        +ps.advToCons ? ['Consultant Advance (from Owner\'s Advance)', '<span style="color:#1a3fbf">AED ' + aed(ps.advToCons) + '</span>'] : null, c.consCap ? ['Consultant Balance (recovered from stages)', 'AED ' + aed(c.consCap)] : null,
+        c.retDoneAt || c.consDoneAt ? ['Advance Recovery / Consultant Balance Complete At', esc([c.retDoneAt, c.consDoneAt].filter(Boolean).join(' / '))] : null])}</table>
+    </div>
+    <div class="ps-sec">PROPOSED PAYMENT SCHEDULE</div>
+    <table class="ps-t"><colgroup><col style="width:7mm"><col style="width:58mm"><col style="width:12mm"><col><col><col><col><col><col><col><col style="width:20mm"><col style="width:40mm"></colgroup>
+      <tr><th>#</th><th>Payment Stage / Work Item</th><th>% of Contract</th><th>Gross Amount (Excl. VAT) (AED)</th><th>VAT ${xr2(ps.vatPct)}% (Added Extra) (AED)</th><th>Maintenance ${xr2(ps.maintPct)}% Held (AED)</th><th>Balance (After Maintenance) (AED)</th><th>Owner Return ${xr2(ps.ownerRetPct)}% (AED)</th><th>Consultant Payment ${xr2(ps.consFeePct)}% (AED)</th><th>Net Payable to Contractor, Incl. VAT (AED)</th><th>Paid / Applied</th><th>Status</th></tr>
+      ${+ps.advance ? `<tr class="adv"><td class="n" style="text-align:center">1</td><td>Advance Payment (fixed amount, funded by Owner, paid directly)</td><td class="n">–</td><td class="n">${aed(ps.advance)}</td><td class="n">–</td><td class="n">–</td><td class="n">${aed(ps.advance)}</td><td class="n">–</td><td class="n">${d(+ps.advToCons)}</td><td class="n">${aed(c.advNet)}</td><td class="st">${ps.advStatus ? esc(ps.advStatus) + (ps.advDate ? '<br>' + dmy(ps.advDate) : '') : ''}</td><td class="st">Advance – Owner Funds</td></tr>` : ''}
+      ${rows.map((r, k) => `<tr class="${/Complete|Fully Recovered/.test(r.label) && (r.name === c.retDoneAt || r.name === c.consDoneAt) ? 'done' : ''}"><td class="n" style="text-align:center">${k + (+ps.advance ? 2 : 1)}</td><td>${esc(r.name)}</td><td class="n">${xr2(r.pct)}%</td><td class="n">${aed(r.gross)}</td><td class="n">${aed(r.vat)}</td><td class="n">${aed(r.maint)}</td><td class="n">${aed(r.bal)}</td><td class="n">${d(r.ret)}</td><td class="n">${d(r.cons)}</td><td class="n" style="font-weight:700">${aed(r.netVat)}</td><td class="st">${r.status ? esc(r.status) + (r.date ? '<br>' + dmy(r.date) : '') : ''}</td><td class="st">${esc(r.label)}</td></tr>`).join('')}
+      <tr class="tot"><td></td><td>Subtotal – Physical Progress / Work Items</td><td class="n">${xr2(c.tot.pct)}%</td><td class="n">${aed(c.tot.gross)}</td><td class="n">${aed(c.tot.vat)}</td><td class="n">${aed(c.tot.maint)}</td><td class="n">${aed(c.tot.bal)}</td><td class="n">${aed(c.tot.ret)}</td><td class="n">${aed(c.tot.cons)}</td><td class="n">${aed(c.tot.netVat)}</td><td></td><td></td></tr></table>
+    <div class="ps-b"><div style="background:#9c6500">MAINTENANCE HELD<b>AED ${aed(c.tot.maint)}</b></div><div style="background:#2f5597">RETURNED TO OWNER<b>AED ${aed(c.tot.ret)}</b></div>
+      <div style="background:#6f4ea0">CONSULTANT PAYMENT<b>AED ${aed(c.consTotal)}</b></div><div style="background:#7f4f00">NET TO CONTRACTOR (During Construction)<b>AED ${aed(c.netConstruction)}</b></div></div>
+    <div class="ps-s"><div><b>Submitted by (Contractor)</b><br>Name: ____________________<br>Signature: ________________<br>Date: _____________________</div><div><b>Reviewed by (Consultant)</b><br>Name: ____________________<br>Signature: ________________<br>Date: _____________________</div><div><b>Approved by (Owner)</b><br>Name: ____________________<br>Signature: ________________<br>Date: _____________________</div></div>
+    <div class="ps-n">Note: Total Contract Value (AED ${aed(c.C)}) excludes VAT – VAT (${xr2(ps.vatPct)}%) is ADDED EXTRA to the Net Payable for each stage, not embedded within it.${c.advNet ? ' Contractor also receives AED ' + aed(c.advNet) + ' net from the Advance' + (+ps.advToCons ? ' (after the AED ' + aed(ps.advToCons) + ' Consultant advance)' : '') + '.' : ''} Maintenance/retention (AED ${aed(c.tot.maint)}) is held back and released later, per terms to be confirmed.</div>
+  </div>`;
+  docOut('Payment Schedule ' + code, 'a4l');
+}
 /* =================== PROGRESS + GANTT (programme per project) =================== */
 /* standard villa work programme (from the Al Tarwi tender work schedule, 72 weeks):
    [phase, activity, start week, duration weeks, weight, part]  part: '' = villa, 'SB' = service block, 'BW' = boundary wall */
@@ -4716,6 +4876,26 @@ $('exp').addEventListener('click', async e => {
     try { await xSchSave(code, s, 'Progress saved – ' + xSchStats(s).actual + '% done'); X.schDraft = null; xSitePage(code); } catch (er) { toast(errText(er)); b.disabled = false; } return; }
   if (D.xschprint) return xSchPrint(D.xschprint);
   if (D.xwpprint) return xWpPrint(D.xwpprint);
+  /* ----- stage payment schedule ----- */
+  if (D.xpsnew) { X.siteCode = D.xpsnew; return xPaySchForm(D.xpsnew); }
+  if (D.xpsedit) return xPaySchForm(D.xpsedit);
+  if (D.xpsprint) return xPsPrint(D.xpsprint);
+  if (D.xpstg != null && D.xpstg !== '') return xPayStage(X.siteCode, D.xpstg);
+  if ('xpsadd' in D && X.psf) { X.psf.ps.stages.push({ name: '', pct: 0, status: '', date: '', ref: '' }); $('xpf-st').innerHTML = xPsStageRows(X.psf.ps); xPsChecks(); return; }
+  if (D.xpsdel != null && X.psf) { X.psf.ps.stages.splice(+D.xpsdel, 1); $('xpf-st').innerHTML = xPsStageRows(X.psf.ps); xPsChecks(); return; }
+  if ('xpfrate' in D && X.psf) { const A = X.psf, k = +$('xpf-upto').value, rate = xPsConsRate(A.ps, xPsContract(A.code), k);
+    if (!(+A.ps.consFeePct > 0)) return toast('Enter the consultant fee % first');
+    A.ps.consPct = String(Math.round(rate * 1e12) / 1e12); $('xpf-consPct').value = A.ps.consPct; xPsChecks(); toast('Recovery % set to ' + A.ps.consPct + '% – ends at stage ' + (k + 1)); return; }
+  if (b.id === 'xpf-save' && X.psf) { const A = X.psf; b.disabled = true; b.textContent = 'Saving…';
+    try { X.d = await server('expSavePaySch', A.code, A.ps, X.pin); keep('exp.cache', X.d); toast('Payment schedule saved'); X.psf = null; X.siteCode = A.code; xGo('paysch'); }
+    catch (er) { $('xpf-err').textContent = errText(er); b.disabled = false; b.textContent = 'Save'; } return; }
+  if (b.id === 'xpt-save' && X.pst) { const P = X.pst, ps = JSON.parse(JSON.stringify(xPs(P.code)));
+    if (P.status && !/^\d{4}-\d{2}-\d{2}$/.test(P.date || '')) { $('xpt-err').textContent = 'Choose the date.'; return; }
+    if (P.i === 'adv') Object.assign(ps, { advStatus: P.status, advDate: P.status ? P.date : '' });
+    else Object.assign(ps.stages[+P.i], { status: P.status, date: P.status ? P.date : '', ref: P.ref || '' });
+    b.disabled = true; b.textContent = 'Saving…';
+    try { X.d = await server('expSavePaySch', P.code, ps, X.pin); keep('exp.cache', X.d); toast('Status saved'); X.pst = null; X.siteCode = P.code; xGo('paysch'); }
+    catch (er) { $('xpt-err').textContent = errText(er); b.disabled = false; b.textContent = 'Save status'; } return; }
   if (D.xact != null && D.xact !== '') return xActForm(X.siteCode, D.xact);
   if (D.xafstep && X.actf) { const it = X.actf.it; it.dur = Math.max(1, (Math.round(+it.dur) || 1) + +D.xafstep); $('xaf-dur').value = it.dur; xAfInfo(); return; }
   if ('xactback' in D) { X.projTab = 'gantt'; return xSitePage(X.siteCode); }
@@ -5000,6 +5180,9 @@ $('exp').addEventListener('input', e => {
     else it[k] = t.value;
     xAfInfo(); return; }
   if ('xafshift' in t.dataset && X.actf) { X.actf.shift = t.checked; xAfInfo(); return; }
+  if (t.dataset.xpf && X.psf) { X.psf.ps[t.dataset.xpf] = t.value; xPsChecks(); return; }
+  if (t.dataset.xps && X.psf) { const [i, k] = t.dataset.xps.split('|'); X.psf.ps.stages[+i][k] = t.value; xPsChecks(); return; }
+  if (t.dataset.xpt && X.pst) { X.pst[t.dataset.xpt] = t.value; return; }
   if (t.closest('[data-xsa]') && t.type !== 'checkbox') { const r = t.closest('[data-xsa]'), st = r.querySelector('input[type=date]').value, mo = +r.querySelector('input[type=number]').value;
     r.querySelector('[data-xsafin]').textContent = /^\d{4}-\d{2}-\d{2}$/.test(st) && mo > 0 ? 'Finishes ' + dmy(xAddDays(st, xMonthsDays(st, mo) - 1)) + ' · ' + xMonthsDays(st, mo) + ' days' : 'Enter the months to see the finish date.'; return; }
   if ('xprojq' in t.dataset) { X.projQ = t.value; clearTimeout(X._pq); X._pq = setTimeout(() => { xSites(); const q = document.querySelector('[data-xprojq]'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 300); return; }
