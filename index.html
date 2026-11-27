@@ -375,6 +375,18 @@ nav button[data-tab=reg]{--ic:var(--i-book)}
 #r-table.mon{max-height:none;border-top:0;padding:4px 10px 0}
 /* monthly attendance sheet (screen + print) */
 .ma{background:#fff;color:#18212f;border-radius:12px;font:12px var(--f-body);color-scheme:light}
+#sheet .prh{margin:0 0 4mm;-webkit-print-color-adjust:exact;print-color-adjust:exact;break-inside:avoid}
+#sheet .prh-top{height:2.2mm;background:linear-gradient(120deg,#141c4d,#1F2A6B 55%,#22358a)}
+#sheet .prh-row{display:flex;justify-content:space-between;align-items:center;gap:6mm;padding:3.5mm 1mm 3mm}
+#sheet .prh-brand{display:flex;align-items:center;gap:3.5mm}
+#sheet .prh img.prh-logo{height:14mm!important;width:auto!important;border:0!important;border-radius:0!important;padding:0!important;background:none!important;object-fit:fill!important}
+#sheet .prh-en{font:800 12.5pt 'Segoe UI',Arial,sans-serif;color:#1F2A6B;letter-spacing:.04em;white-space:nowrap;line-height:1.1}
+#sheet .prh-en span{font-weight:600;color:#1D7FD1}
+#sheet .prh-ar{font:700 11pt Tahoma,'Segoe UI',Arial,sans-serif;color:#1F2A6B;margin-top:1mm;text-align:left}
+#sheet .prh-doc{text-align:right;max-width:95mm}
+#sheet .prh-title{font:800 13pt 'Segoe UI',Arial,sans-serif;color:#1F2A6B;letter-spacing:.05em;line-height:1.15}
+#sheet .prh-sub{font:600 8.5pt 'Segoe UI',Arial,sans-serif;color:#5d6a7e;margin-top:1mm}
+#sheet .prh-line{height:1.1mm;background:linear-gradient(90deg,#1D7FD1,#38b6ff 40%,#1F2A6B)}
 .ma-head{background:linear-gradient(120deg,#0b2a5b,#1d64c4);color:#fff;border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:12px}
 .ma-head img{height:42px;border-radius:6px;background:#fff;padding:2px}
 .ma-head h1{margin:0;font:700 17px var(--f-display);letter-spacing:.04em}
@@ -1614,13 +1626,14 @@ $('r-print').onclick = () => {
     $('sheet').innerHTML = `<style>@page{size:A4 landscape;margin:7mm}#sheet .ma{font-size:7.5pt;border-radius:0}#sheet .ma table{font-size:6.4pt}
       #sheet .ma th,#sheet .ma td{padding:2px 1px}#sheet .ma-wrap{overflow:visible;border-radius:4px}#sheet .ma tr{break-inside:avoid}
       #sheet .ma-head{padding:6px 10px}#sheet .ma-head img{height:11mm}#sheet .ma-head h1{font-size:14pt}#sheet .ma-info{margin:6px 0}
-      #sheet .ma-sum{font-size:8pt!important;width:auto;min-width:60%}#sheet .ma h3{break-after:avoid}</style>${monthHTML(monthData())}`;
+      #sheet .ma-sum{font-size:8pt!important;width:auto;min-width:60%}#sheet .ma h3{break-after:avoid}</style>${monthHTML(monthData())
+        .replace(/<div class="ma-head">[\s\S]*?<\/div><\/div>/, prHead('MONTHLY LABOUR ATTENDANCE'))}`;
     setTimeout(() => print(), 200); return;
   }
   const data = regRows(regReports()), q = $('r-q').value.toLowerCase(), stk = STK_VIEWS.includes(reg.view);
   const rows = data[reg.view].filter(r => (!q || r.join(' ').toLowerCase().includes(q)) && (!stk || r[reg.view === 'bal' ? 0 : 1] === reg.stkSite));
   $('sheet').innerHTML = `<style>@page{size:A4 landscape;margin:9mm}.p-card td.n,.p-card th.n{text-align:right}.p-card tfoot td{font-weight:700;background:#e3eaf5}</style>
-    <div class="p-head"><img src="${LOGO}" alt=""><div><h1>${REG[reg.view].title}</h1><div class="sub">AL TARWI BUILDING CONTRACTING · ${esc(regLabel())}</div></div></div>
+    ${prHead(esc(String(REG[reg.view].title).toUpperCase()), esc(regLabel()))}
     <section class="p-card" style="margin-top:8px;break-inside:auto"><h2>${REG[reg.view].t}<span>${rows.length} lines</span></h2>${rows.length ? regTable(reg.view, rows).replace('class="rt"', '') : '<p style="padding:10px">No entries</p>'}</section>`;
   setTimeout(() => print(), 150);
 };
@@ -1740,7 +1753,7 @@ function printHTML(r){
     return `<figure><img src="${src}" alt=""><figcaption>${esc(p.cap)}</figcaption></figure>`;
   }).join('') + '</div>';
   const info = [['Date', fmtDate(r.date)], ['Site', r.site], ['Engineer', r.eng], ['Reporting', r.tin], ['Leaving', r.tout]];
-  return `<div class="p-head"><img src="${LOGO}" alt=""><div><h1>Daily Site Report</h1><div class="sub">AL TARWI BUILDING CONTRACTING</div></div></div>
+  return `${prHead('DAILY SITE REPORT', esc(r.site) + ' · ' + esc(fmtDate(r.date)))}
   <div class="p-info">${info.map(([k, v]) => `<div><b>${k}</b>${esc(v)}</div>`).join('')}</div>
   ${card('SUB CONTRACTOR LABOUR DETAILS', labour(r.sub, 'Name of contractor'), 'Skilled ' + sum(r.sub, 'skilled') + ' · Unskilled ' + sum(r.sub, 'unskilled'))}
   ${card('COMPANY LABOUR DETAILS', workers(r.co), coSum(r.co))}
@@ -2051,7 +2064,7 @@ function xAdvPrint(){
     .av td{padding:5px 8px;border-bottom:1px solid #dfe5ee}.av .n{text-align:right}.av tfoot td{font-weight:700;background:#e3eaf5}
     .av .sig{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:22mm}.av .sig div{border-top:1px solid #18212f;text-align:center;font-weight:700;padding-top:3px;font-size:9pt}
     .av .ft{margin-top:10px;font-size:8pt;color:#5d6a7e}</style>
-    <div class="av"><img src="${LOGO}" alt=""><h1>STAFF ADVANCES TO RECOVER – ${esc(m.toUpperCase())}</h1>
+    <div class="av">${prHead('STAFF ADVANCES TO RECOVER', esc(m))}
     <table><thead><tr><th>#</th><th>Staff member</th><th class="n">Given (AED)</th><th class="n">Recovered (AED)</th><th class="n">Balance to recover (AED)</th><th>Deduct this month</th></tr></thead>
     <tbody>${due.map((p, i) => `<tr><td>${i + 1}</td><td>${esc(p.name)}</td><td class="n">${aed(p.given)}</td><td class="n">${aed(p.back)}</td><td class="n"><b>${aed(p.due)}</b></td><td></td></tr>`).join('') || '<tr><td colspan="6">Nothing outstanding.</td></tr>'}</tbody>
     <tfoot><tr><td></td><td>Total</td><td class="n">${aed(due.reduce((s, p) => s + p.given, 0))}</td><td class="n">${aed(due.reduce((s, p) => s + p.back, 0))}</td><td class="n">${aed(due.reduce((s, p) => s + p.due, 0))}</td><td></td></tr></tfoot></table>
@@ -2177,7 +2190,7 @@ function xCostPrint(){
     .sc h2{font:700 10.5pt Arial;color:#0b2a5b;margin:10px 0 4px;letter-spacing:.04em}.sc .over{color:#c0392b;font-weight:700}
     .sc .sig{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:18mm}.sc .sig div{border-top:1px solid #18212f;text-align:center;font-weight:700;padding-top:3px;font-size:9pt}
     .sc .ft{margin-top:8px;font-size:7.5pt;color:#5d6a7e}</style>
-    <div class="sc"><img src="${LOGO}" alt=""><h1>${isOv ? 'OVERHEAD' : 'SITE'} COST SHEET – ${esc(site)}</h1>
+    <div class="sc">${prHead((isOv ? 'OVERHEAD' : 'SITE') + ' COST SHEET', esc(site))}
     <div class="inf"><div><b>Client</b>${esc(info.client || '–')}</div><div><b>Plot</b>${esc(info.plot || '–')}</div><div><b>Consultant</b>${esc(info.consultant || '–')}</div><div><b>Period</b>${esc(perTxt)}</div></div>
     <h2>SUMMARY</h2><table><thead><tr><th>Category</th><th class="n">Spent (AED)</th><th class="n">Budget (AED)</th><th class="n">% used</th></tr></thead><tbody>
     ${cats.map(c => { const a = s.cats[c] || 0, b = bud.cats[c] || 0; return `<tr><td>${esc(c)}</td><td class="n">${aed(a)}</td><td class="n">${b ? aed(b) : '–'}</td><td class="n${b && a > b ? ' over' : ''}">${b ? xPct(a, b) + '%' : '–'}</td></tr>`; }).join('')}
@@ -2558,7 +2571,7 @@ function xSumPrint(){
   $('sheet').innerHTML = `<style>@page{size:A4 portrait;margin:12mm}.ds{font:10pt Arial,sans-serif;color:#18212f}
     .ds img{width:100%;height:24mm;object-fit:contain;border-bottom:3px solid #c9a227}.ds h1{background:#0b2a5b;color:#fff;font:700 13pt Arial;letter-spacing:.06em;margin:0 0 8px;padding:6px 10px}
     .ds pre{font:9.5pt/1.5 Consolas,monospace;white-space:pre-wrap;margin:0}.ds .ft{margin-top:10px;font-size:8pt;color:#5d6a7e}</style>
-    <div class="ds"><img src="${LOGO}" alt=""><h1>DAILY SUMMARY – ${dmy(s.date)}</h1><pre>${esc(s.text.split('\n').slice(2).join('\n'))}</pre>
+    <div class="ds">${prHead('DAILY SUMMARY', dmy(s.date))}<pre>${esc(s.text.split('\n').slice(2).join('\n'))}</pre>
     <p class="ft">Printed ${dmy(today())} from the Al Tarwi app · Al Tarwi Building Contracting · Trade License No. 53254 · Al Dhait, Ras Al Khaimah</p></div>`;
   waitImages($('sheet')).then(() => print());
 }
@@ -2572,7 +2585,7 @@ const xLiveTx = t => !/Cancelled|Rejected/.test(t.status);
 const xBankNames = () => X.d.bankNames || (X.d.banks || []).map(b => b.name);
 /* one A4 page on the company letterhead: header + modern title band + body + footer */
 async function lhPrint(title, meta, body, opt = {}){
-  const mh = opt.a5 || opt.mh;                             // compact modern header: vouchers (A5), certificate + invoice (A4)
+  const mh = true;                                         // modern header on every letterhead printout (vouchers A5, all A4 documents)
   const logo = mh ? await lhLogo() : '';
   $('sheet').innerHTML = `<style>
     @page{size:A4 portrait;margin:0}
@@ -2713,6 +2726,15 @@ async function lhLogo(){
     cv.getContext('2d').drawImage(im, 55 * k, 65 * k, 240 * k, 132 * k, 0, 0, cv.width, cv.height);
     LH_LOGO_ = cv.toDataURL('image/png'); } catch (e) { LH_LOGO_ = ''; }
   return LH_LOGO_;
+}
+window.addEventListener('load', () => { lhLogo(); });          // ready before anyone prints
+/* the same modern header for every other printout (Daily Site Report, registers, attendance, advances, cost sheet, summary) */
+function prHead(title, sub){
+  return `<div class="prh"><div class="prh-top"></div><div class="prh-row">
+    <div class="prh-brand"><img class="prh-logo" src="${LH_LOGO_ || LOGO}" alt="Al Tarwi">
+      <div><div class="prh-en">AL TARWI <span>BUILDING CONTRACTING</span></div><div class="prh-ar" dir="rtl">التروي لمقاولات البناء</div></div></div>
+    <div class="prh-doc"><div class="prh-title">${title}</div>${sub ? `<div class="prh-sub">${sub}</div>` : ''}</div>
+  </div><div class="prh-line"></div></div>`;
 }
 /* modern footer bar (A5 vouchers): phone · address · TRN, Arabic address on the right */
 function lhModernFoot(){
