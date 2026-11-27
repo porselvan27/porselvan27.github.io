@@ -3626,7 +3626,7 @@ function xSitePage(code){
   const s = xSite(code), all = xSeesAll(), tab = (X.projTab === 'money' && !all) ? 'over' : (X.projTab || 'over');
   const reps = xReps(code), L = (X.d.letters || []).filter(l => l.site === code && l.status !== 'Cancelled');
   const sch = xSch(code), sst = sch ? xSchStats(sch) : null;
-  const tabs = [['over', 'Overview'], ['dsr', 'Daily Reports' + (reps.length ? ' · ' + reps.length : '')], ['prog', 'Progress' + (sst ? ' · ' + Math.round(sst.actual) + '%' : '')], ['gantt', 'Schedule'],
+  const tabs = [['over', 'Overview'], ['dsr', 'Daily Reports' + (reps.length ? ' · ' + reps.length : '')], ['prog', 'Progress' + (sst ? ' · ' + Math.round(sst.actual) + '%' : '')], ['gantt', 'Gantt chart'],
     ['ltr', 'Letters' + (L.length ? ' · ' + L.length : '')]].concat(all ? [['money', 'Money']] : []);
   const head = `<div class="x-sp-head"><small>PROJECT ${esc(code)}${s.status && s.status !== 'Active' ? ' · ' + esc(s.status).toUpperCase() : ''}</small><h2>${esc(s.project || s.client || 'Project ' + code)}</h2>
       <div>${esc([s.client && s.project ? s.client : '', s.plot ? 'Plot ' + s.plot : '', s.location, s.consultant ? 'Consultant ' + s.consultant : ''].filter(Boolean).join(' · ') || (all ? 'Tap Details to fill the project details' : ''))}</div></div>
@@ -3775,10 +3775,11 @@ function xGantt(s, opt = {}){
     ${s.items.map((it, i) => { const y0 = top + i * rowH, x1 = x(it.start), x2 = x(xAddDays(it.end || xActEnd(it), 1)), w = Math.max(3, x2 - x1), late = +it.pct < 100 && xActEnd(it) < td;
       const behind = !late && xSchStats({ items: [it] }, td).plan > +it.pct + 0.1;
       return `<rect x="0" y="${y0}" width="${W}" height="${rowH}" fill="${i % 2 ? '#f7f9fc' : '#fff'}"/>
-        <text x="6" y="${y0 + 16}" font-size="11" fill="${late ? '#c0392b' : '#1f2a3a'}"${opt.print ? '' : ` data-xact="${i}" style="cursor:pointer"`}>${esc(it.name.length > (opt.print ? 38 : 30) ? it.name.slice(0, opt.print ? 37 : 29) + '…' : it.name)}</text>
+        <text x="6" y="${y0 + 16}" font-size="11" fill="${late ? '#c0392b' : '#1f2a3a'}">${esc(it.name.length > (opt.print ? 38 : 30) ? it.name.slice(0, opt.print ? 37 : 29) + '…' : it.name)}</text>
         <rect x="${x1}" y="${y0 + 5}" width="${w}" height="${rowH - 10}" rx="3" fill="${late ? '#f6c9c4' : behind ? '#fde3b5' : '#cfe2f7'}"/>
         <rect x="${x1}" y="${y0 + 5}" width="${w * Math.min(100, +it.pct) / 100}" height="${rowH - 10}" rx="3" fill="${late ? '#c0392b' : +it.pct >= 100 ? '#17734a' : '#1D7FD1'}"/>
-        <text x="${Math.min(x1 + w + 4, W - 30)}" y="${y0 + 16}" font-size="10" fill="#4a5a70">${+it.pct}%</text>`; }).join('')}
+        <text x="${Math.min(x1 + w + 4, W - 30)}" y="${y0 + 16}" font-size="10" fill="#4a5a70">${+it.pct}%</text>
+        ${opt.print ? '' : `<rect x="0" y="${y0}" width="${W}" height="${rowH}" fill="transparent" data-xact="${i}" style="cursor:pointer"><title>Change ${esc(it.name)}</title></rect>`}`; }).join('')}
     ${td >= st.start && td <= xAddDays(st.start, days) ? `<line x1="${x(td)}" x2="${x(td)}" y1="${top - 6}" y2="${H}" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="4 3"/>` : ''}
   </svg></div>`;
 }
@@ -3809,24 +3810,46 @@ function xProjGantt(code){
   if (!s) return `<div class="empty">No programme yet – open the <b>Progress</b> tab to create it from the villa template.</div>`;
   const st = xSchStats(s);
   return `<div class="x-stats"><div><b>${dmy(st.start)}</b><small>Start</small></div><div><b>${dmy(st.finish)}</b><small>Finish</small></div><div><b class="${st.late.length ? 'neg' : ''}">${st.late.length}</b><small>Late</small></div></div>
-    <p class="hint" style="margin:8px 0">Blue = planned, dark = done, orange = behind, red = late, dashed red line = today. Tap an activity name to change it.</p>
+    <p class="hint" style="margin:8px 0">Blue = planned, dark = done, orange = behind, red = late, dashed red line = today. Tap any activity (on the chart or in the list) to change its dates.</p>
     ${xGantt(s)}
     <div class="x-list" style="margin-top:10px">${s.items.map((it, i) => `<button class="x-it" data-xact="${i}"><span class="ic ${+it.pct >= 100 ? 'in' : ''}">${+it.pct}</span>
       <span class="t"><b>${esc(it.name)}</b><small>${dmy(it.start)} → ${dmy(xActEnd(it))} · ${it.dur} days · weight ${it.w}%</small></span></button>`).join('')}</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn sec" data-xact="new">+ Activity</button><button class="btn sec" data-xschshift="${esc(code)}">Move whole programme</button></div>`;
 }
+/* activity form: Start / Finish / Duration kept in step; later activities = those starting after this one's original finish */
+function xAfLater(A){
+  if (!A.orig) return []; const oEnd = xActEnd(A.orig);
+  return A.s.items.filter((x, j) => j !== +A.i && x.start > oEnd);
+}
+function xAfInfo(){
+  const A = X.actf, el = $('xaf-end'); if (!A || !el) return;
+  const it = A.it, dur = Math.max(1, Math.round(+it.dur || 1)), end = xActEnd({ start: it.start, dur });
+  if ($('xaf-fin') && document.activeElement !== $('xaf-fin')) $('xaf-fin').value = end;
+  if ($('xaf-dur') && document.activeElement !== $('xaf-dur')) $('xaf-dur').value = dur;
+  let t = 'Finishes ' + dmy(end) + ' · ' + dur + ' day' + (dur > 1 ? 's' : '') + '.';
+  if (A.orig) { const d = xDaysBetween(xActEnd(A.orig), end), n = xAfLater(A).length;
+    if (d) t += ' That is ' + Math.abs(d) + ' day' + (Math.abs(d) > 1 ? 's' : '') + (d > 0 ? ' later' : ' earlier') + ' than before'
+      + (A.shift && n ? ` – ${n} later activit${n > 1 ? 'ies' : 'y'} will move ${d > 0 ? '+' : ''}${d} days too.` : '.'); }
+  el.textContent = t;
+}
 function xActForm(code, i){
   const s = JSON.parse(JSON.stringify(xSch(code))), isNew = i === 'new', it = isNew ? { id: 'a' + Date.now(), name: '', w: 0, start: today(), dur: 14, pct: 0 } : s.items[+i];
-  X.actf = { code, i, s, it }; X.view = 'actf';
+  X.actf = { code, i, s, it, orig: isNew ? null : { start: it.start, dur: +it.dur }, shift: !isNew }; X.view = 'actf';
   xMain().innerHTML = `<div class="x-form"><div class="card"><h2>${isNew ? 'NEW ACTIVITY' : 'ACTIVITY'}</h2><div class="body">
       <div><label>Activity</label><input data-xaf="name" value="${esc(it.name)}"></div>
-      <div class="x-two"><div><label>Start</label><input type="date" data-xaf="start" value="${esc(it.start)}"></div><div><label>Duration (days)</label><input data-xaf="dur" inputmode="numeric" value="${esc(it.dur)}"></div></div>
+      <div class="x-two"><div><label for="xaf-start">Start</label><input type="date" id="xaf-start" data-xaf="start" value="${esc(it.start)}"></div><div><label for="xaf-fin">Finish</label><input type="date" id="xaf-fin" data-xaf="end" value="${esc(xActEnd(it))}"></div></div>
+      <div><label for="xaf-dur">Duration (days)</label><div style="display:flex;gap:8px;align-items:center">
+        <button type="button" class="btn sec" data-xafstep="-7" aria-label="7 days less">−7</button><button type="button" class="btn sec" data-xafstep="-1" aria-label="1 day less">−1</button>
+        <input id="xaf-dur" type="number" min="1" step="1" data-xaf="dur" inputmode="numeric" value="${esc(it.dur)}" style="text-align:center;flex:1;min-width:0">
+        <button type="button" class="btn sec" data-xafstep="1" aria-label="1 day more">+1</button><button type="button" class="btn sec" data-xafstep="7" aria-label="7 days more">+7</button></div></div>
       <div class="x-two"><div><label>Weight (% of the work)</label><input data-xaf="w" inputmode="decimal" value="${esc(it.w)}"></div><div><label>% done</label><input data-xaf="pct" inputmode="numeric" value="${esc(it.pct)}"></div></div>
-      <p class="hint" id="xaf-end">Finishes ${dmy(xActEnd(it))}. Total weight of all activities: ${xr2(s.items.reduce((a, x) => a + (+x.w || 0), 0) + (isNew ? +it.w || 0 : 0))}% (best = 100%).</p>
+      ${isNew ? '' : `<label style="display:flex;gap:8px;align-items:flex-start;font-weight:500;margin-top:4px"><input type="checkbox" data-xafshift checked style="width:auto;margin-top:3px"> <span>Move the activities that come after this one by the same number of days</span></label>`}
+      <p class="hint" id="xaf-end"></p>
+      <p class="hint">Total weight of all activities: ${xr2(s.items.reduce((a, x) => a + (+x.w || 0), 0) + (isNew ? +it.w || 0 : 0))}% (best = 100%).</p>
     </div></div><p class="x-ferr" id="xaf-err"></p>
     ${isNew ? '' : `<button class="btn sec" data-xactdel style="color:var(--danger);width:100%">Remove this activity</button>`}</div>
     <div class="x-save"><div><button class="btn sec" data-xactback>Cancel</button><button class="btn ok" id="xaf-save">Save</button></div></div>`;
-  $('exp').scrollTop = 0;
+  $('exp').scrollTop = 0; xAfInfo();
 }
 /* printable progress report (A4) */
 function xSchPrint(code){
@@ -4432,7 +4455,7 @@ function xSuppRecPrint(){
 
 /* ---------- events ---------- */
 $('exp').addEventListener('click', async e => {
-  const b = e.target.closest('button,[data-x]'); if (!b) return;
+  const b = e.target.closest('button,[data-x],[data-xact]'); if (!b) return;   // [data-xact]: tap a row of the Gantt chart
   const D = b.dataset;
   if ('xhome' in D) { if (history.state === 'app') { X.goingHome = true; history.back(); } else goHome(); return; }
   if (D.xback != null) { if (xBack()) return;                         // nothing left to go back to: out to the Al Tarwi home
@@ -4515,6 +4538,7 @@ $('exp').addEventListener('click', async e => {
     try { await xSchSave(code, s, 'Progress saved – ' + xSchStats(s).actual + '% done'); X.schDraft = null; xSitePage(code); } catch (er) { toast(errText(er)); b.disabled = false; } return; }
   if (D.xschprint) return xSchPrint(D.xschprint);
   if (D.xact != null && D.xact !== '') return xActForm(X.siteCode, D.xact);
+  if (D.xafstep && X.actf) { const it = X.actf.it; it.dur = Math.max(1, (Math.round(+it.dur) || 1) + +D.xafstep); $('xaf-dur').value = it.dur; xAfInfo(); return; }
   if ('xactback' in D) { X.projTab = 'gantt'; return xSitePage(X.siteCode); }
   if ('xactdel' in D && X.actf) { const A = X.actf; if (!await ask(`Remove "${A.it.name}" from the programme?`, 'Remove')) return;
     A.s.items.splice(+A.i, 1); try { await xSchSave(A.code, A.s, 'Activity removed'); X.actf = null; X.projTab = 'gantt'; xSitePage(A.code); } catch (er) { toast(errText(er)); } return; }
@@ -4522,9 +4546,12 @@ $('exp').addEventListener('click', async e => {
     if (!String(it.name).trim()) { $('xaf-err').textContent = 'Enter the activity name.'; return; }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(it.start)) { $('xaf-err').textContent = 'Choose the start date.'; return; }
     it.dur = Math.max(1, Math.round(+it.dur || 1)); it.w = xr2(it.w); it.pct = Math.min(100, Math.max(0, Math.round(+it.pct || 0)));
+    let moved = 0;
+    if (A.orig && A.shift) { const d = xDaysBetween(xActEnd(A.orig), xActEnd(it));   // finish moved: later activities follow
+      if (d) xAfLater(A).forEach(x => { x.start = xAddDays(x.start, d) || x.start; moved++; }); }
     if (A.i === 'new') A.s.items.push(it); else A.s.items[+A.i] = it;
     A.s.items.sort((p, q) => p.start.localeCompare(q.start));
-    b.disabled = true; try { await xSchSave(A.code, A.s, 'Activity saved'); X.actf = null; X.projTab = 'gantt'; xSitePage(A.code); } catch (er) { $('xaf-err').textContent = errText(er); b.disabled = false; } return; }
+    b.disabled = true; try { await xSchSave(A.code, A.s, 'Activity saved' + (moved ? ' – ' + moved + ' later activit' + (moved > 1 ? 'ies' : 'y') + ' moved' : '')); X.actf = null; X.projTab = 'gantt'; xSitePage(A.code); } catch (er) { $('xaf-err').textContent = errText(er); b.disabled = false; } return; }
   if (D.xschshift) { const code = D.xschshift, n = prompt('Move the whole programme by how many days?\n(e.g. 14 = two weeks later, -7 = one week earlier)'); if (n == null) return;
     const k = Math.round(+n); if (!k) return toast('Enter a number of days');
     const s = JSON.parse(JSON.stringify(xSch(code))); s.items.forEach(it => { it.start = xAddDays(it.start, k) || it.start; }); s.start = xAddDays(s.start, k) || s.start;
@@ -4782,7 +4809,11 @@ $('exp').addEventListener('input', e => {
     if (!X.schDraft || X.schDraft.code !== code) X.schDraft = { code, s: JSON.parse(JSON.stringify(xSch(code))) };
     X.schDraft.s.items[i].pct = +t.value; const v = $('xpg-v' + i); if (v) v.textContent = t.value + '%';
     const big = document.querySelector('#exp .x-bal b'); if (big) big.innerHTML = xSchStats(X.schDraft.s).actual + '<span>%</span>'; return; }
-  if (t.dataset.xaf && X.actf) { X.actf.it[t.dataset.xaf] = t.value; const e = $('xaf-end'); if (e && /start|dur/.test(t.dataset.xaf)) e.textContent = 'Finishes ' + dmy(xActEnd({ start: X.actf.it.start, dur: Math.max(1, Math.round(+X.actf.it.dur || 1)) })) + '.'; return; }
+  if (t.dataset.xaf && X.actf) { const it = X.actf.it, k = t.dataset.xaf;
+    if (k === 'end') { if (/^\d{4}-\d{2}-\d{2}$/.test(t.value) && t.value >= it.start) it.dur = xDaysBetween(it.start, t.value) + 1; }   // finish typed: duration worked out
+    else it[k] = t.value;
+    xAfInfo(); return; }
+  if ('xafshift' in t.dataset && X.actf) { X.actf.shift = t.checked; xAfInfo(); return; }
   if ('xprojq' in t.dataset) { X.projQ = t.value; clearTimeout(X._pq); X._pq = setTimeout(() => { xSites(); const q = document.querySelector('[data-xprojq]'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 300); return; }
   if (t.dataset.xltrf) { X[t.dataset.xltrf === 'site' ? 'ltrSite' : 'ltrKind'] = t.value; xLetters(); return; }
   if (t.dataset.xlt && X.lf) { const f = X.lf, k = t.dataset.xlt; f[k] = t.value;
