@@ -2572,7 +2572,8 @@ const xLiveTx = t => !/Cancelled|Rejected/.test(t.status);
 const xBankNames = () => X.d.bankNames || (X.d.banks || []).map(b => b.name);
 /* one A4 page on the company letterhead: header + modern title band + body + footer */
 async function lhPrint(title, meta, body, opt = {}){
-  const logo = opt.a5 ? await lhLogo() : '';
+  const mh = opt.a5 || opt.mh;                             // compact modern header: vouchers (A5), certificate + invoice (A4)
+  const logo = mh ? await lhLogo() : '';
   $('sheet').innerHTML = `<style>
     @page{size:A4 portrait;margin:0}
     #sheet .lh{position:relative;width:210mm;min-height:296mm;font:9.4pt/1.45 'Segoe UI',Arial,sans-serif;color:#18212f;background:#fff;overflow:hidden}
@@ -2620,6 +2621,26 @@ async function lhPrint(title, meta, body, opt = {}){
     #sheet .lh-sec{font:800 7.6pt 'Segoe UI',Arial;letter-spacing:.12em;color:#1D7FD1;text-transform:uppercase;margin:4mm 0 1.5mm}
     #sheet .lh-tb tr,#sheet .lh-sig,#sheet .lh-tot{break-inside:avoid}
     #sheet .lh-h{margin-bottom:-4mm}
+    #sheet .mh{position:relative;z-index:1}
+    #sheet .mh-top{height:2.6mm;background:linear-gradient(120deg,#141c4d,#1F2A6B 55%,#22358a)}
+    #sheet .mh-row{display:flex;justify-content:space-between;align-items:center;gap:6mm;padding:5mm 14mm 4mm}
+    #sheet .mh-brand{display:flex;align-items:center;gap:4mm}
+    #sheet .mh-logo{height:17mm;width:auto}
+    #sheet .mh-en{font:800 13.5pt 'Segoe UI',Arial;color:#1F2A6B;letter-spacing:.04em;line-height:1.1;white-space:nowrap}
+    #sheet .mh-en span{font-weight:600;color:#1D7FD1}
+    #sheet .mh-ar{font:700 12pt Tahoma,'Segoe UI',Arial;color:#1F2A6B;margin-top:1.2mm;text-align:left}
+    #sheet .mh-doc{text-align:right}
+    #sheet .mh-title{font:800 15pt 'Segoe UI',Arial;letter-spacing:.06em;color:#1F2A6B;line-height:1.15}
+    #sheet .mh-meta{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:1.5mm;margin-top:2mm;max-width:80mm;margin-left:auto}
+    #sheet .mh-meta span{background:#eef4fc;border-radius:1.6mm;padding:1mm 2.6mm;font-size:8pt;white-space:nowrap}
+    #sheet .mh-meta i{font-style:normal;color:#5d6a7e;margin-right:1.4mm}#sheet .mh-meta b{color:#1F2A6B}
+    #sheet .mh-line{height:1.3mm;background:linear-gradient(90deg,#1D7FD1,#38b6ff 40%,#1F2A6B)}
+    #sheet .mh + .lh-wm + .lh-b{padding-top:4mm}
+    #sheet .mh + .lh-wm + .lh-b .lh-t{margin-top:0}
+    #sheet .mh + .lh-wm + .lh-b{padding-bottom:20mm}
+    #sheet .mh + .lh-wm + .lh-b .lh-tb td{padding-top:1.45mm;padding-bottom:1.45mm}
+    #sheet .mh + .lh-wm + .lh-b .lh-sig{margin-top:12mm}
+    #sheet .mh + .lh-wm + .lh-b .lh-grid{margin-bottom:3.5mm}
     #sheet .lh-mf{position:fixed;left:0;bottom:0;width:210mm;background:linear-gradient(90deg,#1D7FD1,#38b6ff 40%,#1F2A6B);padding-top:1.1mm;-webkit-print-color-adjust:exact;print-color-adjust:exact}
     #sheet .lh-mf-in{background:linear-gradient(120deg,#141c4d,#1F2A6B 55%,#22358a);color:#e8f0ff;display:flex;align-items:center;justify-content:space-between;gap:4mm;padding:3mm 14mm;font-size:8pt}
     #sheet .lh-mf-in span{display:inline-flex;align-items:center;gap:1.4mm;white-space:nowrap}
@@ -2646,7 +2667,7 @@ async function lhPrint(title, meta, body, opt = {}){
     #sheet .mh-meta i{font-style:normal;color:#5d6a7e;margin-right:1.4mm}#sheet .mh-meta b{color:#1F2A6B}
     #sheet .mh-line{height:1.1mm;background:linear-gradient(90deg,#1D7FD1,#38b6ff 40%,#1F2A6B)}
     #sheet .lh-wm{width:80mm;height:80mm;top:55%}
-    #sheet .lh-b{padding:4.5mm 10mm 3.5mm}
+    #sheet .lh-b,#sheet .mh + .lh-wm + .lh-b{padding:4.5mm 10mm 3.5mm}
     #sheet .lh-t{margin:-1mm 0 2.5mm;align-items:center}
     #sheet .lh-t h1{font-size:15pt}#sheet .lh-t h1::after{margin-top:1.4mm;width:20mm}
     #sheet .lh-meta{font-size:7.8pt;min-width:0}#sheet .lh-meta tr{display:inline-table}
@@ -2669,11 +2690,11 @@ async function lhPrint(title, meta, body, opt = {}){
     #sheet .lh-stamp{top:62mm;left:60mm}` : ''}
   </style>
   <div class="lh">${opt.stamp ? `<div class="lh-stamp">${esc(opt.stamp)}</div>` : ''}
-    ${opt.a5 ? `<div class="mh"><div class="mh-top"></div><div class="mh-row">
+    ${mh ? `<div class="mh"><div class="mh-top"></div><div class="mh-row">
         <div class="mh-brand"><img class="mh-logo" src="${logo}" alt="Al Tarwi">
           <div><div class="mh-en">AL TARWI <span>BUILDING CONTRACTING</span></div><div class="mh-ar" dir="rtl">التروي لمقاولات البناء</div></div></div>
-        <div class="mh-doc"><div class="mh-title">${title}</div>
-          <div class="mh-meta">${meta.filter(m => m[1] !== '' && m[1] != null).map(([k, v]) => `<span><i>${k}</i><b>${v}</b></span>`).join('')}</div></div>
+        ${opt.a5 ? `<div class="mh-doc"><div class="mh-title">${title}</div>
+          <div class="mh-meta">${meta.filter(m => m[1] !== '' && m[1] != null).map(([k, v]) => `<span><i>${k}</i><b>${v}</b></span>`).join('')}</div></div>` : ''}
       </div><div class="mh-line"></div></div>`
     : `<div class="lh-hw"><img class="lh-h" src="${LH_HEAD}" alt="Al Tarwi Building Contracting"></div>`}
     <svg class="lh-wm" viewBox="0 0 120 120" aria-hidden="true"><use href="#at-mark"/></svg>
@@ -3070,7 +3091,7 @@ async function xDocPrint(d){
       <div class="lh-words">${esc(aedWords(D.total))}</div>
       ${D.notes ? `<p class="lh-note">${esc(D.notes)}</p>` : ''}
       ${lhSig([['Prepared by – Contractor', 'Al Tarwi Building Contracting'], ['Checked & certified – Consultant', s.consultant || ''], ['Approved – Owner', s.client || '']])}`,
-      { stamp: d.status === 'Cancelled' ? 'CANCELLED' : '' });
+      { stamp: d.status === 'Cancelled' ? 'CANCELLED' : '', mh: true });
   } else {
     const lines = (D.lines || []).filter(l => l.desc || +l.amount);
     const qr = await xQR(['Al Tarwi Building Contracting', 'TRN ' + st.companyTrn, 'Tax invoice ' + d.no, 'Date ' + dmy(d.date), 'VAT AED ' + aed(D.vat), 'Total AED ' + aed(D.total)].join('\n'));
@@ -3086,7 +3107,7 @@ async function xDocPrint(d){
       <p class="lh-note">Cheque should be in the name of: <b>${esc(st.chequeName)}</b></p>
       <div class="lh-end">${qr ? `<div class="lh-qr"><img src="${qr}" alt="QR"><div>Tax invoice ${esc(d.no)}<br>TRN ${esc(st.companyTrn)}</div></div>` : '<div></div>'}</div>
       ${lhSig([['For Al Tarwi Building Contracting', 'Name & signature'], ["Receiver's signature", 'Name & date']])}`,
-      { stamp: d.status === 'Cancelled' ? 'CANCELLED' : '' });
+      { stamp: d.status === 'Cancelled' ? 'CANCELLED' : '', mh: true });
   }
 }
 
