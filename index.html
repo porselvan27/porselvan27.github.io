@@ -2689,6 +2689,9 @@ async function lhPrint(title, meta, body, opt = {}){
   const logo = mh ? await lhLogo() : '';
   $('sheet').innerHTML = `<style>
     @page{size:A4 portrait;margin:0}
+    #sheet table.lh-pg{width:100%;border-collapse:collapse;margin-top:-12mm}#sheet table.lh-pg>*>tr>td{padding:0;border:0;background:none}
+    #sheet .lh-pg-sp{height:17mm}#sheet .lh-pg-top{height:12mm}
+    #sheet .lh-sec{break-after:avoid}
     #sheet .lh{position:relative;width:210mm;min-height:296mm;font:9.4pt/1.45 'Segoe UI',Arial,sans-serif;color:#18212f;background:#fff;overflow:hidden}
     #sheet .lh-h{display:block;width:210mm;height:auto}
     #sheet .lh-f{position:fixed;left:0;bottom:0;width:210mm;height:auto}
@@ -2750,7 +2753,7 @@ async function lhPrint(title, meta, body, opt = {}){
     #sheet .mh-line{height:1.3mm;background:linear-gradient(90deg,#1D7FD1,#38b6ff 40%,#1F2A6B)}
     #sheet .mh + .lh-wm + .lh-b{padding-top:4mm}
     #sheet .mh + .lh-wm + .lh-b .lh-t{margin-top:0}
-    #sheet .mh + .lh-wm + .lh-b{padding-bottom:20mm}
+    #sheet .mh + .lh-wm + .lh-b{padding-bottom:0}
     #sheet .mh + .lh-wm + .lh-b .lh-tb td{padding-top:1.45mm;padding-bottom:1.45mm}
     #sheet .mh + .lh-wm + .lh-b .lh-sig{margin-top:12mm}
     #sheet .mh + .lh-wm + .lh-b .lh-grid{margin-bottom:3.5mm}
@@ -2811,9 +2814,9 @@ async function lhPrint(title, meta, body, opt = {}){
       </div><div class="mh-line"></div></div>`
     : `<div class="lh-hw"><img class="lh-h" src="${LH_HEAD}" alt="Al Tarwi Building Contracting"></div>`}
     <svg class="lh-wm" viewBox="0 0 120 120" aria-hidden="true"><use href="#at-mark"/></svg>
-    <div class="lh-b">${opt.a5 ? '' : `<div class="lh-t"><div><h1>${title}</h1>${opt.sub ? `<div class="lh-sub">${opt.sub}</div>` : ''}</div>
-      <table class="lh-meta">${meta.filter(m => m[1] !== '' && m[1] != null).map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}</table></div>`}
-      ${body}</div>
+    <div class="lh-b">${opt.a5 ? body : `<table class="lh-pg"><thead><tr><td><div class="lh-pg-top"></div></td></tr></thead><tbody><tr><td><div class="lh-t"><div><h1>${title}</h1>${opt.sub ? `<div class="lh-sub">${opt.sub}</div>` : ''}</div>
+      <table class="lh-meta">${meta.filter(m => m[1] !== '' && m[1] != null).map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}</table></div>
+      ${body}</td></tr></tbody><tfoot><tr><td><div class="lh-pg-sp"></div></td></tr></tfoot></table>`}</div>
     ${lhModernFoot()}</div>`;
   docOut(title + ' ' + ((meta[0] && meta[0][1]) || ''), opt.a5 ? 'a5' : 'a4');
 }
