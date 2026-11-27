@@ -2983,7 +2983,9 @@ function xSites(){
   X.view = 'sites'; const all = xSeesAll(), q = (X.projQ || '').toLowerCase();
   const list = X.d.sites.filter(s => !q || [s.code, s.client, s.project, s.plot, s.consultant].join(' ').toLowerCase().includes(q))
     .sort((a, b) => (a.status === 'Completed') - (b.status === 'Completed') || a.code.localeCompare(b.code));
+  const noProg = X.d.sites.filter(s => s.status !== 'Completed' && !xSch(s.code)).length;
   xMain().innerHTML = `<div class="x-tot"><span>${list.length} projects · ${list.filter(s => s.status !== 'Completed').length} active</span>${all ? `<span>Contracts AED ${aed(list.reduce((s, x) => s + (x.contract || 0), 0))}</span>` : ''}</div>
+    ${xCanBill() && noProg ? `<button class="x-it" data-xschall style="margin-bottom:10px;border:1px dashed var(--line)"><span class="ic tr">▦</span><span class="t"><b>Create programmes (Gantt) for ${noProg} project${noProg > 1 ? 's' : ''}</b><small>Give each one a start date and months – the activities are made for you</small></span></button>` : ''}
     <input data-xprojq value="${esc(X.projQ || '')}" placeholder="Search project, client, plot…" aria-label="Search projects" style="margin-bottom:10px">
     <div class="x-list">${list.map(s => { const m = all ? xSiteMoney(s.code) : null, r = xReps(s.code), today0 = r[0] && r[0].date === today();
       const open = (X.d.letters || []).filter(l => l.site === s.code && /Draft|Sent/.test(l.status)).length;
@@ -3739,12 +3741,22 @@ function xSchStats(s, date){
   const late = s.items.filter(it => +it.pct < 100 && xActEnd(it) < date);
   return { actual: Math.round(actual * 10) / 10, plan: Math.round(plan * 10) / 10, diff: Math.round((actual - plan) * 10) / 10, start, finish, late, W };
 }
-function xSchFromTemplate(start){
-  return { start, items: XVILLA.map(([name, w, s, dur], i) => ({ id: 'a' + (i + 1), name, w, start: xAddDays(start, s) || start, dur, pct: 0 })), hist: [] };
+/* contract period in days: start + N months (e.g. 9 or 10.5), last day included */
+function xMonthsDays(start, months){
+  const m = +months; if (!(m > 0)) return 0;
+  const e = new Date(start + 'T12:00'); e.setMonth(e.getMonth() + Math.floor(m));
+  return xDaysBetween(start, e.toISOString().slice(0, 10)) + Math.round((m % 1) * 30);
+}
+/* the villa template stretched / squeezed to the contract period: every activity keeps its place and share of the time */
+function xSchFromTemplate(start, months){
+  const span = Math.max(...XVILLA.map(a => a[2] + a[3])), T = Math.max(20, xMonthsDays(start, months) || span), f = T / span;
+  return { start, months: +months > 0 ? +months : '', hist: [],
+    items: XVILLA.map(([name, w, s, dur], i) => { const b = Math.round(s * f), e = Math.round((s + dur) * f);
+      return { id: 'a' + (i + 1), name, w, start: xAddDays(start, b) || start, dur: Math.max(1, e - b), pct: 0 }; }) };
 }
 async function xSchSave(code, s, msg){
   const st = xSchStats(s), hist = (s.hist || []).filter(h => h.d !== today()); hist.push({ d: today(), a: st.actual });
-  const send = { start: s.start, items: s.items, hist };
+  const send = { start: s.start, months: s.months || '', items: s.items, hist };
   X.d = await server('expSaveSchedule', code, send, X.pin); keep('exp.cache', X.d); toast(msg || 'Saved');
 }
 /* S-curve: planned (line) vs actual (dots from the saved history) */
@@ -3783,12 +3795,31 @@ function xGantt(s, opt = {}){
     ${td >= st.start && td <= xAddDays(st.start, days) ? `<line x1="${x(td)}" x2="${x(td)}" y1="${top - 6}" y2="${H}" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="4 3"/>` : ''}
   </svg></div>`;
 }
+/* create programmes for many projects at once: start date + months per project */
+function xSchAll(){
+  X.view = 'schall';
+  const act = X.d.sites.filter(s => s.status !== 'Completed').sort((a, b) => a.code.localeCompare(b.code));
+  const todo = act.filter(s => !xSch(s.code)), done = act.filter(s => xSch(s.code));
+  xMain().innerHTML = `<div class="card"><div class="body"><b>Create programmes</b>
+      <p class="hint" style="margin-bottom:0">For each project give the start date of the works and the contract period in months. The standard villa programme (20 activities) is fitted to that period. Projects that already have a programme are not changed.</p></div></div>
+    ${todo.length ? `<div class="x-list">${todo.map(s => `<div class="x-it" data-xsa="${esc(s.code)}" style="cursor:default;display:block">
+        <label style="display:flex;gap:10px;align-items:center;margin:0"><input type="checkbox" checked style="width:auto"><span class="t"><b>${esc(s.code)}${s.client ? ' · ' + esc(s.client) : ''}</b><small>${esc([s.project, s.plot ? 'Plot ' + s.plot : ''].filter(Boolean).join(' · ') || '')}</small></span></label>
+        <div class="x-two" style="margin-top:8px"><div><label>Start date</label><input type="date" value="${today()}"></div><div><label>Duration (months)</label><input type="number" min="1" max="60" step="0.5" inputmode="decimal" placeholder="e.g. 12"></div></div>
+        <small class="hint" data-xsafin>Enter the months to see the finish date.</small></div>`).join('')}</div>`
+      : '<div class="empty">Every active project already has a programme.</div>'}
+    ${done.length ? `<div class="x-sec">Already have a programme</div><div class="x-list">${done.map(s => { const st = xSchStats(xSch(s.code));
+        return `<button class="x-it" data-xsitep="${esc(s.code)}"><span class="ic in">✓</span><span class="t"><b>${esc(s.code)}${s.client ? ' · ' + esc(s.client) : ''}</b><small>${dmy(st.start)} → ${dmy(st.finish)} · ${st.actual}% done</small></span></button>`; }).join('')}</div>` : ''}
+    <p class="x-ferr" id="xsa-err"></p>
+    <div class="x-save"><div><button class="btn sec" data-xback="sites">Cancel</button>${todo.length ? '<button class="btn ok" id="xsa-save">Create programmes</button>' : ''}</div></div>`;
+  $('exp').scrollTop = 0;
+}
 /* Progress tab */
 function xProjProgress(code){
   const s = xSch(code);
   if (!s) return `<div class="card"><div class="body"><b>No programme yet for this project</b>
-      <p class="hint">Start from the standard G+1 villa programme (20 activities, about 9 months, weights add up to 100%). You can change every activity afterwards.</p>
-      <label>Start date of the works</label><input type="date" id="xs-start" value="${today()}">
+      <p class="hint">Give the start date and the contract period. The standard villa programme (20 activities, weights add up to 100%) is fitted to that period. You can change every activity afterwards.</p>
+      <div class="x-two"><div><label for="xs-start">Start date of the works</label><input type="date" id="xs-start" value="${today()}"></div>
+        <div><label for="xs-months">Duration (months)</label><input id="xs-months" type="number" min="1" max="60" step="0.5" inputmode="decimal" placeholder="e.g. 12"></div></div>
       <button class="btn ok" data-xschnew="${esc(code)}" style="margin-top:10px;width:100%">Create programme from the villa template</button></div></div>`;
   const st = xSchStats(s), dr = X.schDraft && X.schDraft.code === code ? X.schDraft.s : s, dst = xSchStats(dr);
   const status = st.diff >= 0 ? `On / ahead of schedule (+${st.diff}%)` : `Behind schedule by ${-st.diff}%`;
@@ -4532,8 +4563,22 @@ $('exp').addEventListener('click', async e => {
   /* projects */
   if (D.xptab) { X.projTab = D.xptab; return xSitePage(X.siteCode); }
   /* progress + programme */
-  if (D.xschnew) { const code = D.xschnew, st = ($('xs-start') || {}).value || today(); b.disabled = true;
-    try { await xSchSave(code, xSchFromTemplate(st), 'Programme created – 20 activities'); X.projTab = 'gantt'; xSitePage(code); } catch (er) { toast(errText(er)); b.disabled = false; } return; }
+  if (D.xschnew) { const code = D.xschnew, st = ($('xs-start') || {}).value || today(), mo = +($('xs-months') || {}).value || 0;
+    if (!(mo > 0)) return toast('Enter the duration in months');
+    b.disabled = true;
+    try { const s = xSchFromTemplate(st, mo); await xSchSave(code, s, `Programme created – ${mo} months, finishes ${dmy(xSchStats(s).finish)}`); X.projTab = 'gantt'; xSitePage(code); } catch (er) { toast(errText(er)); b.disabled = false; } return; }
+  if ('xschall' in D) return xSchAll();
+  if (b.id === 'xsa-save') {
+    const rows = [...document.querySelectorAll('[data-xsa]')].filter(r => r.querySelector('input[type=checkbox]').checked)
+      .map(r => ({ site: r.dataset.xsa, start: r.querySelector('input[type=date]').value, months: +r.querySelector('input[type=number]').value }));
+    const bad = rows.find(r => !/^\d{4}-\d{2}-\d{2}$/.test(r.start) || !(r.months > 0));
+    if (!rows.length) return $('xsa-err').textContent = 'Tick at least one project.';
+    if (bad) return $('xsa-err').textContent = bad.site + ': enter the start date and the months.';
+    b.disabled = true; b.textContent = 'Creating…';
+    try { X.d = await server('expSaveSchedules', rows.map(r => ({ site: r.site, data: xSchFromTemplate(r.start, r.months) })), X.pin); keep('exp.cache', X.d);
+      toast(rows.length + ' programme' + (rows.length > 1 ? 's' : '') + ' created'); X.schAll = null; xGo('sites'); }
+    catch (er) { $('xsa-err').textContent = errText(er); b.disabled = false; b.textContent = 'Create programmes'; }
+    return; }
   if (D.xpgsave) { const code = D.xpgsave, s = X.schDraft && X.schDraft.code === code ? X.schDraft.s : xSch(code); b.disabled = true;
     try { await xSchSave(code, s, 'Progress saved – ' + xSchStats(s).actual + '% done'); X.schDraft = null; xSitePage(code); } catch (er) { toast(errText(er)); b.disabled = false; } return; }
   if (D.xschprint) return xSchPrint(D.xschprint);
@@ -4814,6 +4859,8 @@ $('exp').addEventListener('input', e => {
     else it[k] = t.value;
     xAfInfo(); return; }
   if ('xafshift' in t.dataset && X.actf) { X.actf.shift = t.checked; xAfInfo(); return; }
+  if (t.closest('[data-xsa]') && t.type !== 'checkbox') { const r = t.closest('[data-xsa]'), st = r.querySelector('input[type=date]').value, mo = +r.querySelector('input[type=number]').value;
+    r.querySelector('[data-xsafin]').textContent = /^\d{4}-\d{2}-\d{2}$/.test(st) && mo > 0 ? 'Finishes ' + dmy(xAddDays(st, xMonthsDays(st, mo) - 1)) + ' · ' + xMonthsDays(st, mo) + ' days' : 'Enter the months to see the finish date.'; return; }
   if ('xprojq' in t.dataset) { X.projQ = t.value; clearTimeout(X._pq); X._pq = setTimeout(() => { xSites(); const q = document.querySelector('[data-xprojq]'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 300); return; }
   if (t.dataset.xltrf) { X[t.dataset.xltrf === 'site' ? 'ltrSite' : 'ltrKind'] = t.value; xLetters(); return; }
   if (t.dataset.xlt && X.lf) { const f = X.lf, k = t.dataset.xlt; f[k] = t.value;
