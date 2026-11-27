@@ -2955,7 +2955,7 @@ function xSites(){
       const open = (X.d.letters || []).filter(l => l.site === s.code && /Draft|Sent/.test(l.status)).length;
       return `<button class="x-it" data-xsitep="${esc(s.code)}"><span class="ic ${s.status === 'Completed' ? 'in' : ''}">${esc(s.code.replace(/\D/g, '').slice(-2))}</span>
         <span class="t"><b>${esc(s.code)}${s.client ? ' · ' + esc(s.client) : ''}</b><small>${esc([s.project, s.plot ? 'Plot ' + s.plot : '', s.consultant].filter(Boolean).join(' · ') || 'Details not filled yet')}</small>
-        <small>${r.length ? (today0 ? '✓ Report today' : 'Last report ' + dmy(r[0].date)) : 'No reports yet'}${open ? ' · ' + open + ' open letter' + (open > 1 ? 's' : '') : ''}${m && m.due > 0 ? ' · due ' + aed(m.due) : ''}</small></span>
+        <small>${(() => { const sc = xSch(s.code); if (!sc) return ''; const q = xSchStats(sc); return q.actual + '% done' + (q.diff < -5 ? ' (behind)' : '') + ' · '; })()}${r.length ? (today0 ? '✓ Report today' : 'Last report ' + dmy(r[0].date)) : 'No reports yet'}${open ? ' · ' + open + ' open letter' + (open > 1 ? 's' : '') : ''}${m && m.due > 0 ? ' · due ' + aed(m.due) : ''}</small></span>
         <span class="a">${esc(s.status || 'Active')}</span></button>`; }).join('') || '<div class="empty">No projects found.</div>'}</div>
     <div class="x-save"><div><button class="btn sec" data-x="home">Back</button>${xIsAdmin() ? '<button class="btn" data-xsitef="">Add project</button>' : ''}</div></div>`;
 }
@@ -3529,7 +3529,9 @@ function xSitePage(code){
   X.view = 'site'; X.siteCode = code;
   const s = xSite(code), all = xSeesAll(), tab = (X.projTab === 'money' && !all) ? 'over' : (X.projTab || 'over');
   const reps = xReps(code), L = (X.d.letters || []).filter(l => l.site === code && l.status !== 'Cancelled');
-  const tabs = [['over', 'Overview'], ['dsr', 'Daily Reports' + (reps.length ? ' · ' + reps.length : '')], ['ltr', 'Letters' + (L.length ? ' · ' + L.length : '')]].concat(all ? [['money', 'Money']] : []);
+  const sch = xSch(code), sst = sch ? xSchStats(sch) : null;
+  const tabs = [['over', 'Overview'], ['dsr', 'Daily Reports' + (reps.length ? ' · ' + reps.length : '')], ['prog', 'Progress' + (sst ? ' · ' + Math.round(sst.actual) + '%' : '')], ['gantt', 'Schedule'],
+    ['ltr', 'Letters' + (L.length ? ' · ' + L.length : '')]].concat(all ? [['money', 'Money']] : []);
   const head = `<div class="x-sp-head"><small>PROJECT ${esc(code)}${s.status && s.status !== 'Active' ? ' · ' + esc(s.status).toUpperCase() : ''}</small><h2>${esc(s.project || s.client || 'Project ' + code)}</h2>
       <div>${esc([s.client && s.project ? s.client : '', s.plot ? 'Plot ' + s.plot : '', s.location, s.consultant ? 'Consultant ' + s.consultant : ''].filter(Boolean).join(' · ') || (all ? 'Tap Details to fill the project details' : ''))}</div></div>
     <div class="x-chips" style="margin:10px 0 12px;flex-wrap:nowrap;overflow-x:auto">${tabs.map(([k, t]) => `<button type="button" class="${tab === k ? 'on' : ''}" data-xptab="${k}" style="white-space:nowrap">${t}</button>`).join('')}</div>`;
@@ -3538,6 +3540,8 @@ function xSitePage(code){
   let body = '';
   if (tab === 'over') body = xProjOverview(code, reps, L);
   else if (tab === 'dsr') body = xProjReports(code, reps);
+  else if (tab === 'prog') body = xProjProgress(code);
+  else if (tab === 'gantt') body = xProjGantt(code);
   else if (tab === 'ltr') body = `<div class="x-big"><button class="in" data-xltrsitenew="${esc(code)}">+ Letter / report<small>EOT, NCR, RFI, inspection, delay notice…</small></button></div>
       <div class="x-list" style="margin-top:10px">${L.map(xLtrRow).join('') || '<div class="empty">No letters for this project yet.</div>'}</div>`;
   else body = xProjMoney(code);
@@ -3557,13 +3561,19 @@ function xProjOverview(code, reps, L){
       <div class="x-stats"><div><b>${aed(m.inv)}</b><small>Invoiced</small></div><div><b>${aed(m.rec)}</b><small>Received</small></div><div><b class="${m.due > 0 ? 'neg' : ''}">${aed(m.due)}</b><small>Still due</small></div></div>
       <div class="x-stats" style="margin-top:8px"><div><b>${aed(P.income || 0)}</b><small>Income (excl. VAT)</small></div><div><b>${aed(P.cost || 0)}</b><small>Costs</small></div>
         <div><b class="${(P.profit || 0) < 0 ? 'neg' : ''}">${(P.profit || 0) < 0 ? '−' : ''}${aed(Math.abs(P.profit || 0))}</b><small>Profit</small></div></div>`; }
+  const sch = xSch(code), sst = sch ? xSchStats(sch) : null;
   const alerts = [
+    sst && sst.diff < -5 ? `Behind schedule: ${sst.actual}% done, ${sst.plan}% planned by today${sst.late.length ? ' · ' + sst.late.length + ' late activit' + (sst.late.length > 1 ? 'ies' : 'y') : ''}.` : '',
     daysSince == null ? 'No Daily Site Report yet for this project.' : daysSince > 1 ? `No Daily Site Report for ${daysSince} days (last ${dmy(r0.date)}).` : '',
     openL.length ? `${openL.length} letter${openL.length > 1 ? 's' : ''} still open (${openL.slice(0, 3).map(l => l.no.split('/').slice(1).join('/')).join(', ')}).` : '',
     dl.length ? `${dl.length} deliver${dl.length > 1 ? 'ies' : 'y'} in the Daily Reports with no bill entered.` : ''].filter(Boolean);
   return `${alerts.map(a => `<div class="x-warn" style="margin-bottom:8px">${esc(a)}</div>`).join('')}
     <div class="x-big"><button class="in" data-xdsr="${esc(code)}">${r0 && r0.date === today() ? "Open today's report" : "Today's Daily Report"}<small>${r0 && r0.date === today() ? '✓ started' : 'Not done yet'}</small></button>
       <button class="out" data-xltrsitenew="${esc(code)}">+ Letter / report<small>EOT, NCR, RFI…</small></button></div>
+    ${sst ? `<button class="card" data-xptab="prog" style="display:block;width:100%;text-align:left;margin:10px 0;border:0;cursor:pointer"><div class="body">
+        <div class="x-vrow"><span>Work done (programme)</span><b>${sst.actual}% <small class="hint">· planned ${sst.plan}%</small></b></div>${xBar(sst.actual, 100)}
+        <small class="hint">Finish ${dmy(sst.finish)} · ${sst.diff >= 0 ? 'on / ahead of schedule' : 'behind by ' + (-sst.diff) + '%'} · tap for progress & Gantt</small></div></button>`
+      : `<button class="btn sec" data-xptab="prog" style="width:100%;margin:10px 0">Set up progress & Gantt for this project</button>`}
     ${money}
     <div class="x-stats" style="margin-top:8px"><div><b>${reps.length}</b><small>Daily reports</small></div><div><b>${wk.reduce((n, r) => n + xRepMen(r), 0)}</b><small>Man-days, last 7 days</small></div>
       <div><b>${r0 ? xRepMen(r0) : 0}</b><small>Men on ${r0 ? dmy(r0.date) : '–'}</small></div></div>
@@ -3614,6 +3624,124 @@ function xProjMoney(code){
     ${fold('Latest expenses', exps.length + ' entries', `<div class="x-list">${exps.slice(0, 8).map(xRow).join('') || '<div class="empty">None yet.</div>'}</div>`)}`;
 }
 
+/* =================== PROGRESS + GANTT (programme per project) =================== */
+/* standard G+1 villa: [name, weight %, start day, duration days] – about 9 months, weights add up to 100 */
+const XVILLA = [
+  ['Mobilization & site setup', 1, 0, 7], ['Excavation & backfilling', 2, 7, 14], ['Foundations (PCC, footings, neck columns)', 6, 21, 21],
+  ['Plinth beams & ground slab', 5, 42, 14], ['Ground floor columns', 4, 56, 14], ['First floor slab', 8, 70, 21], ['First floor columns', 4, 91, 14],
+  ['Roof slab', 7, 105, 21], ['Block work', 8, 100, 45], ['Plumbing & drainage – 1st fix', 4, 110, 30], ['Electrical – 1st fix', 4, 110, 30],
+  ['Plaster (internal & external)', 8, 140, 45], ['Waterproofing & roof insulation', 3, 130, 14], ['AC ducting & HVAC', 5, 150, 30],
+  ['Flooring & tiling', 8, 185, 40], ['Doors & windows', 5, 190, 30], ['Painting', 6, 215, 30], ['MEP 2nd fix & fixtures', 4, 230, 21],
+  ['External works (boundary wall, interlock, landscape)', 5, 200, 40], ['Testing, snagging & handover', 3, 250, 14]];
+const xSch = code => (X.d.schedules || {})[code] || null;
+const xActEnd = it => xAddDays(it.start, it.dur - 1);
+function xSchStats(s, date){
+  date = date || today(); const W = s.items.reduce((a, it) => a + (+it.w || 0), 0) || 1;
+  const actual = s.items.reduce((a, it) => a + (+it.w || 0) * (+it.pct || 0) / 100, 0) / W * 100;
+  const plan = s.items.reduce((a, it) => { const f = Math.min(1, Math.max(0, (xDaysBetween(it.start, date) + 1) / it.dur)); return a + (+it.w || 0) * f; }, 0) / W * 100;
+  const start = s.items.reduce((m, it) => it.start < m ? it.start : m, s.items[0].start), finish = s.items.reduce((m, it) => xActEnd(it) > m ? xActEnd(it) : m, xActEnd(s.items[0]));
+  const late = s.items.filter(it => +it.pct < 100 && xActEnd(it) < date);
+  return { actual: Math.round(actual * 10) / 10, plan: Math.round(plan * 10) / 10, diff: Math.round((actual - plan) * 10) / 10, start, finish, late, W };
+}
+function xSchFromTemplate(start){
+  return { start, items: XVILLA.map(([name, w, s, dur], i) => ({ id: 'a' + (i + 1), name, w, start: xAddDays(start, s) || start, dur, pct: 0 })), hist: [] };
+}
+async function xSchSave(code, s, msg){
+  const st = xSchStats(s), hist = (s.hist || []).filter(h => h.d !== today()); hist.push({ d: today(), a: st.actual });
+  const send = { start: s.start, items: s.items, hist };
+  X.d = await server('expSaveSchedule', code, send, X.pin); keep('exp.cache', X.d); toast(msg || 'Saved');
+}
+/* S-curve: planned (line) vs actual (dots from the saved history) */
+function xSCurve(s){
+  const st = xSchStats(s), days = Math.max(7, xDaysBetween(st.start, st.finish) + 1), W = 640, H = 200, L = 34, B = 24;
+  const x = d => L + (W - L - 8) * Math.min(1, Math.max(0, xDaysBetween(st.start, d) / days)), y = p => H - B - (H - B - 10) * p / 100;
+  const pts = []; for (let i = 0; i <= days; i += Math.max(1, Math.round(days / 40))) { const d = xAddDays(st.start, i); pts.push(x(d).toFixed(1) + ',' + y(xSchStats(s, d).plan).toFixed(1)); }
+  pts.push(x(st.finish).toFixed(1) + ',' + y(100).toFixed(1));
+  const act = (s.hist || []).filter(h => h.d >= st.start).map(h => [x(h.d), y(h.a)]);
+  const td = today(), tx = x(td);
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;background:var(--card);border-radius:12px" role="img" aria-label="S-curve planned vs actual">
+    ${[0, 25, 50, 75, 100].map(p => `<line x1="${L}" x2="${W - 8}" y1="${y(p)}" y2="${y(p)}" stroke="#d9e1ee" stroke-width="1"/><text x="${L - 4}" y="${y(p) + 4}" font-size="10" text-anchor="end" fill="#6b7a90">${p}%</text>`).join('')}
+    <polyline points="${pts.join(' ')}" fill="none" stroke="#1D7FD1" stroke-width="2.5"/>
+    ${act.length > 1 ? `<polyline points="${act.map(a => a[0].toFixed(1) + ',' + a[1].toFixed(1)).join(' ')}" fill="none" stroke="#17734a" stroke-width="2.5"/>` : ''}
+    ${act.map(a => `<circle cx="${a[0].toFixed(1)}" cy="${a[1].toFixed(1)}" r="3.5" fill="#17734a"/>`).join('')}
+    ${td >= st.start && td <= st.finish ? `<line x1="${tx}" x2="${tx}" y1="10" y2="${H - B}" stroke="#c0392b" stroke-dasharray="4 3"/><text x="${tx + 3}" y="20" font-size="10" fill="#c0392b">Today</text>` : ''}
+    <text x="${L}" y="${H - 6}" font-size="10" fill="#6b7a90">${dmy(st.start)}</text><text x="${W - 8}" y="${H - 6}" font-size="10" text-anchor="end" fill="#6b7a90">${dmy(st.finish)}</text>
+    <rect x="${W - 190}" y="12" width="10" height="3" fill="#1D7FD1"/><text x="${W - 176}" y="17" font-size="10" fill="#1f2a3a">Planned</text>
+    <rect x="${W - 110}" y="12" width="10" height="3" fill="#17734a"/><text x="${W - 96}" y="17" font-size="10" fill="#1f2a3a">Actual</text></svg>`;
+}
+/* Gantt chart (SVG): planned bars, the done part filled, today line, late activities red */
+function xGantt(s, opt = {}){
+  const st = xSchStats(s), td = today(), days = Math.max(14, xDaysBetween(st.start, st.finish) + 8), rowH = 24, top = 30, LW = opt.print ? 230 : 190, W = opt.print ? 1000 : 860;
+  const H = top + s.items.length * rowH + 10, x = d => LW + (W - LW - 6) * xDaysBetween(st.start, d) / days;
+  const months = []; { let m = new Date(st.start + 'T12:00'); m.setDate(1); while (m.toISOString().slice(0, 10) <= xAddDays(st.start, days)) { months.push(m.toISOString().slice(0, 10)); m.setMonth(m.getMonth() + 1); } }
+  return `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:${opt.print ? 0 : 640}px;height:auto;background:#fff;border-radius:12px;font-family:'Segoe UI',Arial,sans-serif" role="img" aria-label="Gantt chart">
+    ${months.map(m => { const mx = Math.max(LW, x(m)); return `<line x1="${mx}" x2="${mx}" y1="${top - 6}" y2="${H}" stroke="#e3e9f2"/><text x="${mx + 3}" y="${top - 12}" font-size="10" fill="#6b7a90">${new Date(m + 'T12:00').toLocaleString('en-GB', { month: 'short', year: '2-digit' })}</text>`; }).join('')}
+    ${s.items.map((it, i) => { const y0 = top + i * rowH, x1 = x(it.start), x2 = x(xAddDays(it.end || xActEnd(it), 1)), w = Math.max(3, x2 - x1), late = +it.pct < 100 && xActEnd(it) < td;
+      const behind = !late && xSchStats({ items: [it] }, td).plan > +it.pct + 0.1;
+      return `<rect x="0" y="${y0}" width="${W}" height="${rowH}" fill="${i % 2 ? '#f7f9fc' : '#fff'}"/>
+        <text x="6" y="${y0 + 16}" font-size="11" fill="${late ? '#c0392b' : '#1f2a3a'}"${opt.print ? '' : ` data-xact="${i}" style="cursor:pointer"`}>${esc(it.name.length > (opt.print ? 38 : 30) ? it.name.slice(0, opt.print ? 37 : 29) + '…' : it.name)}</text>
+        <rect x="${x1}" y="${y0 + 5}" width="${w}" height="${rowH - 10}" rx="3" fill="${late ? '#f6c9c4' : behind ? '#fde3b5' : '#cfe2f7'}"/>
+        <rect x="${x1}" y="${y0 + 5}" width="${w * Math.min(100, +it.pct) / 100}" height="${rowH - 10}" rx="3" fill="${late ? '#c0392b' : +it.pct >= 100 ? '#17734a' : '#1D7FD1'}"/>
+        <text x="${Math.min(x1 + w + 4, W - 30)}" y="${y0 + 16}" font-size="10" fill="#4a5a70">${+it.pct}%</text>`; }).join('')}
+    ${td >= st.start && td <= xAddDays(st.start, days) ? `<line x1="${x(td)}" x2="${x(td)}" y1="${top - 6}" y2="${H}" stroke="#c0392b" stroke-width="1.5" stroke-dasharray="4 3"/>` : ''}
+  </svg></div>`;
+}
+/* Progress tab */
+function xProjProgress(code){
+  const s = xSch(code);
+  if (!s) return `<div class="card"><div class="body"><b>No programme yet for this project</b>
+      <p class="hint">Start from the standard G+1 villa programme (20 activities, about 9 months, weights add up to 100%). You can change every activity afterwards.</p>
+      <label>Start date of the works</label><input type="date" id="xs-start" value="${today()}">
+      <button class="btn ok" data-xschnew="${esc(code)}" style="margin-top:10px;width:100%">Create programme from the villa template</button></div></div>`;
+  const st = xSchStats(s), dr = X.schDraft && X.schDraft.code === code ? X.schDraft.s : s, dst = xSchStats(dr);
+  const status = st.diff >= 0 ? `On / ahead of schedule (+${st.diff}%)` : `Behind schedule by ${-st.diff}%`;
+  return `<div class="x-bal${st.diff < -5 ? ' neg' : ''}"><small>WORK DONE · ${esc(status.toUpperCase())}</small><b>${dst.actual}<span>%</span></b>
+      <div class="x-row"><div><i>Planned today</i>${st.plan}%</div><div><i>Finish (programme)</i>${dmy(st.finish)}</div><div><i>Late activities</i>${st.late.length}</div></div>${xBar(dst.actual, 100)}</div>
+    <div class="x-sec">S-curve</div>${xSCurve(s)}
+    <div class="x-sec">Update % done <span class="hint" style="font-weight:500">slide, then Save</span></div>
+    <div class="x-list">${dr.items.map((it, i) => { const pl = Math.round(xSchStats({ items: [it] }).plan), late = +it.pct < 100 && xActEnd(it) < today();
+      return `<div class="x-it" style="cursor:default;display:block"><div style="display:flex;justify-content:space-between;gap:8px"><b style="${late ? 'color:var(--danger)' : ''}">${esc(it.name)}</b><b id="xpg-v${i}">${+it.pct}%</b></div>
+        <small class="hint">${dmy(it.start)} → ${dmy(xActEnd(it))} · weight ${it.w}% · planned now ${pl}%${late ? ' · LATE' : ''}</small>
+        <input type="range" min="0" max="100" step="5" value="${+it.pct}" data-xpg="${i}" aria-label="% done ${esc(it.name)}" style="width:100%;margin-top:6px"></div>`; }).join('')}</div>
+    <div class="x-big" style="margin-top:10px"><button class="in" data-xpgsave="${esc(code)}">Save progress<small>${X.schDraft && X.schDraft.code === code ? 'Changes not saved yet' : 'Saves today’s % for the S-curve'}</small></button>
+      <button class="out" data-xschprint="${esc(code)}">Progress report<small>Print / WhatsApp</small></button></div>`;
+}
+/* Schedule (Gantt) tab */
+function xProjGantt(code){
+  const s = xSch(code);
+  if (!s) return `<div class="empty">No programme yet – open the <b>Progress</b> tab to create it from the villa template.</div>`;
+  const st = xSchStats(s);
+  return `<div class="x-stats"><div><b>${dmy(st.start)}</b><small>Start</small></div><div><b>${dmy(st.finish)}</b><small>Finish</small></div><div><b class="${st.late.length ? 'neg' : ''}">${st.late.length}</b><small>Late</small></div></div>
+    <p class="hint" style="margin:8px 0">Blue = planned, dark = done, orange = behind, red = late, dashed red line = today. Tap an activity name to change it.</p>
+    ${xGantt(s)}
+    <div class="x-list" style="margin-top:10px">${s.items.map((it, i) => `<button class="x-it" data-xact="${i}"><span class="ic ${+it.pct >= 100 ? 'in' : ''}">${+it.pct}</span>
+      <span class="t"><b>${esc(it.name)}</b><small>${dmy(it.start)} → ${dmy(xActEnd(it))} · ${it.dur} days · weight ${it.w}%</small></span></button>`).join('')}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn sec" data-xact="new">+ Activity</button><button class="btn sec" data-xschshift="${esc(code)}">Move whole programme</button></div>`;
+}
+function xActForm(code, i){
+  const s = JSON.parse(JSON.stringify(xSch(code))), isNew = i === 'new', it = isNew ? { id: 'a' + Date.now(), name: '', w: 0, start: today(), dur: 14, pct: 0 } : s.items[+i];
+  X.actf = { code, i, s, it }; X.view = 'actf';
+  xMain().innerHTML = `<div class="x-form"><div class="card"><h2>${isNew ? 'NEW ACTIVITY' : 'ACTIVITY'}</h2><div class="body">
+      <div><label>Activity</label><input data-xaf="name" value="${esc(it.name)}"></div>
+      <div class="x-two"><div><label>Start</label><input type="date" data-xaf="start" value="${esc(it.start)}"></div><div><label>Duration (days)</label><input data-xaf="dur" inputmode="numeric" value="${esc(it.dur)}"></div></div>
+      <div class="x-two"><div><label>Weight (% of the work)</label><input data-xaf="w" inputmode="decimal" value="${esc(it.w)}"></div><div><label>% done</label><input data-xaf="pct" inputmode="numeric" value="${esc(it.pct)}"></div></div>
+      <p class="hint" id="xaf-end">Finishes ${dmy(xActEnd(it))}. Total weight of all activities: ${xr2(s.items.reduce((a, x) => a + (+x.w || 0), 0) + (isNew ? +it.w || 0 : 0))}% (best = 100%).</p>
+    </div></div><p class="x-ferr" id="xaf-err"></p>
+    ${isNew ? '' : `<button class="btn sec" data-xactdel style="color:var(--danger);width:100%">Remove this activity</button>`}</div>
+    <div class="x-save"><div><button class="btn sec" data-xactback>Cancel</button><button class="btn ok" id="xaf-save">Save</button></div></div>`;
+  $('exp').scrollTop = 0;
+}
+/* printable progress report (A4) */
+function xSchPrint(code){
+  const s = xSch(code); if (!s) return; const st = xSchStats(s), si = xSite(code);
+  lhPrint('PROGRESS REPORT', [['Project', esc(code)], ['Date', dmy(today())], ['Work done', st.actual + '%']],
+    `<div class="lh-grid"><div class="lh-card"><small>Project</small><b>${esc(si.project || code)}</b><div>${esc(si.client || '')}</div><div>${esc([si.plot ? 'Plot ' + si.plot : '', si.location].filter(Boolean).join(', '))}</div></div>
+      <div class="lh-card"><small>Status</small><b>${st.actual}% done · planned ${st.plan}%</b><div>${st.diff >= 0 ? 'On / ahead of schedule' : 'Behind schedule by ' + (-st.diff) + '%'}</div><div>Programme: ${dmy(st.start)} → ${dmy(st.finish)}</div></div></div>
+    <div class="lh-sec">Programme (Gantt)</div>${xGantt(s, { print: true })}
+    <div class="lh-sec">Activities</div><table class="lh-tb"><tr><th>#</th><th>Activity</th><th>Start</th><th>Finish</th><th class="n">Weight</th><th class="n">Planned</th><th class="n">Done</th></tr>
+      ${s.items.map((it, i) => { const late = +it.pct < 100 && xActEnd(it) < today(); return `<tr><td>${i + 1}</td><td style="${late ? 'color:#a93226' : ''}">${esc(it.name)}${late ? ' (late)' : ''}</td><td>${dmy(it.start)}</td><td>${dmy(xActEnd(it))}</td><td class="n">${it.w}%</td><td class="n">${Math.round(xSchStats({ items: [it] }).plan)}%</td><td class="n">${+it.pct}%</td></tr>`; }).join('')}</table>
+    ${lhSig([['Prepared by', X.d.user.name], ['Checked by', ''], ['Consultant', '']])}`, { mh: true });
+}
 /* =================== statements: bank (Excel/CSV read on the phone) · supplier (photo/PDF via Gemini, or Excel/CSV) =================== */
 /* --- read a CSV or XLSX file into rows of text, entirely on this phone (nothing is uploaded) --- */
 function xCsvRows(text){
@@ -3997,7 +4125,7 @@ const XLTR = {
 const XLTR_ST = ['Draft', 'Sent', 'Replied', 'Closed'];
 const xLtrRecip = (kind, site) => { const s = xSite(site), w = (XLTR[kind] || XLTR.LTR).to;
   return w === 'consultant' ? (s.consultant || '') : w === 'client' ? (s.client || '') : ''; };
-const xAddDays = (d, n) => { if (!d || !n) return ''; const x = new Date(d + 'T12:00'); x.setDate(x.getDate() + Math.round(n)); return x.toISOString().slice(0, 10); };
+const xAddDays = (d, n) => { if (!d) return ''; if (!n) return d; const x = new Date(d + 'T12:00'); x.setDate(x.getDate() + Math.round(n)); return x.toISOString().slice(0, 10); };
 function xLtrUnpaid(site){ return (X.d.docs || []).filter(x => x.kind === 'INV' && x.site === site && x.status !== 'Cancelled' && /Unpaid|Part/.test(xDocState(x))); }
 function xLtrEot(D){ const days = xr2((D.events || []).reduce((a, e) => a + xr2(e.days), 0)); return { days, newDate: xAddDays(D.origCompletion, days) }; }
 /* the letter text made from the details (the user can still change it) */
@@ -4281,6 +4409,27 @@ $('exp').addEventListener('click', async e => {
   if (D.xstmtprint) return xStmtPrint(D.xstmtprint);
   /* projects */
   if (D.xptab) { X.projTab = D.xptab; return xSitePage(X.siteCode); }
+  /* progress + programme */
+  if (D.xschnew) { const code = D.xschnew, st = ($('xs-start') || {}).value || today(); b.disabled = true;
+    try { await xSchSave(code, xSchFromTemplate(st), 'Programme created – 20 activities'); X.projTab = 'gantt'; xSitePage(code); } catch (er) { toast(errText(er)); b.disabled = false; } return; }
+  if (D.xpgsave) { const code = D.xpgsave, s = X.schDraft && X.schDraft.code === code ? X.schDraft.s : xSch(code); b.disabled = true;
+    try { await xSchSave(code, s, 'Progress saved – ' + xSchStats(s).actual + '% done'); X.schDraft = null; xSitePage(code); } catch (er) { toast(errText(er)); b.disabled = false; } return; }
+  if (D.xschprint) return xSchPrint(D.xschprint);
+  if (D.xact != null && D.xact !== '') return xActForm(X.siteCode, D.xact);
+  if ('xactback' in D) { X.projTab = 'gantt'; return xSitePage(X.siteCode); }
+  if ('xactdel' in D && X.actf) { const A = X.actf; if (!await ask(`Remove "${A.it.name}" from the programme?`, 'Remove')) return;
+    A.s.items.splice(+A.i, 1); try { await xSchSave(A.code, A.s, 'Activity removed'); X.actf = null; X.projTab = 'gantt'; xSitePage(A.code); } catch (er) { toast(errText(er)); } return; }
+  if (b.id === 'xaf-save' && X.actf) { const A = X.actf, it = A.it;
+    if (!String(it.name).trim()) { $('xaf-err').textContent = 'Enter the activity name.'; return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(it.start)) { $('xaf-err').textContent = 'Choose the start date.'; return; }
+    it.dur = Math.max(1, Math.round(+it.dur || 1)); it.w = xr2(it.w); it.pct = Math.min(100, Math.max(0, Math.round(+it.pct || 0)));
+    if (A.i === 'new') A.s.items.push(it); else A.s.items[+A.i] = it;
+    A.s.items.sort((p, q) => p.start.localeCompare(q.start));
+    b.disabled = true; try { await xSchSave(A.code, A.s, 'Activity saved'); X.actf = null; X.projTab = 'gantt'; xSitePage(A.code); } catch (er) { $('xaf-err').textContent = errText(er); b.disabled = false; } return; }
+  if (D.xschshift) { const code = D.xschshift, n = prompt('Move the whole programme by how many days?\n(e.g. 14 = two weeks later, -7 = one week earlier)'); if (n == null) return;
+    const k = Math.round(+n); if (!k) return toast('Enter a number of days');
+    const s = JSON.parse(JSON.stringify(xSch(code))); s.items.forEach(it => { it.start = xAddDays(it.start, k) || it.start; }); s.start = xAddDays(s.start, k) || s.start;
+    try { await xSchSave(code, s, 'Programme moved ' + k + ' days'); xSitePage(code); } catch (er) { toast(errText(er)); } return; }
   if (D.xdsr) return xOpenDsr(D.xdsr);
   if (D.xdsropen) return xOpenDsr(X.siteCode, D.xdsropen);
   /* letters & reports */
@@ -4517,6 +4666,11 @@ $('exp').addEventListener('input', e => {
     if (X.df.kind === 'INV' && (k === 'qty' || k === 'rate') && xr2(l.qty) && xr2(l.rate)) { l.amount = xr2(xr2(l.qty) * xr2(l.rate)).toFixed(2); const a = document.querySelector(`[data-xdl="${i}|amount"]`); if (a) a.value = l.amount; }
     xDocCalc(); return; }
   if (t.dataset.xp && X.pf) { X.pf[t.dataset.xp] = t.value; return; }
+  if (t.dataset.xpg != null && X.siteCode) { const code = X.siteCode, i = +t.dataset.xpg;
+    if (!X.schDraft || X.schDraft.code !== code) X.schDraft = { code, s: JSON.parse(JSON.stringify(xSch(code))) };
+    X.schDraft.s.items[i].pct = +t.value; const v = $('xpg-v' + i); if (v) v.textContent = t.value + '%';
+    const big = document.querySelector('#exp .x-bal b'); if (big) big.innerHTML = xSchStats(X.schDraft.s).actual + '<span>%</span>'; return; }
+  if (t.dataset.xaf && X.actf) { X.actf.it[t.dataset.xaf] = t.value; const e = $('xaf-end'); if (e && /start|dur/.test(t.dataset.xaf)) e.textContent = 'Finishes ' + dmy(xActEnd({ start: X.actf.it.start, dur: Math.max(1, Math.round(+X.actf.it.dur || 1)) })) + '.'; return; }
   if ('xprojq' in t.dataset) { X.projQ = t.value; clearTimeout(X._pq); X._pq = setTimeout(() => { xSites(); const q = document.querySelector('[data-xprojq]'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 300); return; }
   if (t.dataset.xltrf) { X[t.dataset.xltrf === 'site' ? 'ltrSite' : 'ltrKind'] = t.value; xLetters(); return; }
   if (t.dataset.xlt && X.lf) { const f = X.lf, k = t.dataset.xlt; f[k] = t.value;
