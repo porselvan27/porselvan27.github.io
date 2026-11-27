@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Al Tarwi</title>
@@ -736,7 +737,8 @@ button.x-bk{text-align:left;border:0;cursor:pointer;font:inherit;color:inherit}
         <em id="h-dsr-stat"></em><span class="go"></span></button>
       <button class="h-tile" data-app="exp" style="--c1:#d9622b;--c2:#f5a524">
         <i class="h-ic" style="--ic:var(--i-wallet)"></i><b>Expenses</b><small>Petty cash, bills and receipts</small></button>
-      <div class="h-tile add"><i class="h-ic" style="--ic:var(--i-plus)"></i><b>More apps</b><small>Coming soon</small></div>
+      <button class="h-tile" data-app="proj" style="--c1:#17734a;--c2:#2fb67a">
+        <i class="h-ic" style="--ic:var(--i-pin)"></i><b>Projects</b><small>Each site: daily reports, letters, money</small></button>
     </div>
     <h2 class="h-sec">Quick actions</h2>
     <div class="h-quick">
@@ -1893,6 +1895,7 @@ $('home').addEventListener('click', e => {
   if (t.dataset.go) openApp(t.dataset.go);
   else if (t.dataset.app === 'dsr') openApp();
   else if (t.dataset.app === 'exp') openExp();
+  else if (t.dataset.app === 'proj') { X.view = 'sites'; X.goAfter = 'sites'; openExp(); }
   else toast(t.dataset.app + ' is coming soon');
 });
 $('b-home').onclick = () => { if (history.state === 'app') history.back(); else goHome(); };
@@ -1924,7 +1927,7 @@ function openExp(){
   xLoad();
 }
 function xLoad(){
-  return server('expAll', X.pin).then(d => { X.d = d; keep('exp.cache', d); if (X.view !== 'form') xGo(X.view === 'detail' ? (X.prev === 'appr' ? 'appr' : 'list') : (X.view === 'login' ? 'home' : X.view)); })
+  return server('expAll', X.pin).then(d => { X.d = d; keep('exp.cache', d); if (X.view !== 'form') xGo(X.view === 'detail' ? (X.prev === 'appr' ? 'appr' : 'list') : (X.view === 'login' ? (X.goAfter || 'home') : X.view)); X.goAfter = ''; })
     .catch(e => { const m = errText(e);
       if (/PIN/i.test(m)) { X.pin = ''; keep('exp.pin', ''); X.d = null; keep('exp.cache', null); xLogin(m); }
       else if (!X.d) xMain().innerHTML = `<div class="empty">Could not load expenses. ${esc(m)}<br><br><button class="btn" data-xretry>Try again</button></div>`;
@@ -2028,7 +2031,6 @@ function xHome(){
       const unpaid = (d.docs || []).filter(x => x.kind === 'INV' && /Unpaid|Part/.test(xDocState(x))), adv = xAdvances().filter(p => p.due > 0), rb = xToReimb();
       const cnt = (d.counts || []).find(c => c.box === box), act = d.sites.filter(s => s.status !== 'Completed');
       return (xSeesAll() ? sec('Sites & clients', [
-          tile('data-x="sites"', '--i-pin', 'Sites', act.length + ' active · everything for each site in one page'),
           tile('data-x="docs"', '--i-file', 'Invoices & certificates', unpaid.length ? unpaid.length + ' unpaid · AED ' + aed(unpaid.reduce((s, x) => s + x.total - xDocPaid(x), 0)) : 'All paid'),
           xIsAdmin() ? tile('data-xnew="CLIENT RECEIPT"', '--i-wallet', 'Client paid us', 'Record a payment · prints receipt voucher') : '']) : '')
         + (xSeesAll() ? sec('Bank & cheques', [
@@ -2036,7 +2038,8 @@ function xHome(){
           tile('data-x="chq"', '--i-file', 'Cheques', pch.length ? pch.length + ' not cleared' + (pch.filter(xChqDue).length ? ' · ' + pch.filter(xChqDue).length + ' due soon' : '') : 'Nothing waiting'),
           (() => { const owe = xSuppliers().reduce((s, p) => s + Math.max(0, p.bal), 0);
             return tile('data-x="supp"', '--i-users', 'Suppliers & subcontractors', owe > 0.5 ? 'We owe AED ' + aed(owe) + ' · statements' : 'Add · bills · statements'); })()]) : '')
-        + sec('Site paperwork', [
+        + sec('Projects', [
+          tile('data-x="sites"', '--i-pin', 'Projects', d.sites.filter(s => s.status !== 'Completed').length + ' active · daily reports, letters, money'),
           (() => { const L = (d.letters || []).filter(l => l.status !== 'Cancelled'), open = L.filter(l => /Draft|Sent/.test(l.status)).length;
             return tile('data-x="letters"', '--i-file', 'Letters & reports', L.length ? L.length + ' · ' + open + ' open · EOT, NCR, RFI…' : 'EOT claim, NCR, RFI, inspection, letters'); })()])
         + sec(xSeesAll() ? 'Cash' : 'My cash', [
@@ -2939,15 +2942,29 @@ const xSiteMoney = code => {
   const cert = docs.filter(d => d.kind === 'CERT').sort((a, b) => a.date.localeCompare(b.date) || a.no.localeCompare(b.no)).pop();
   return { inv: xr2(inv), rec: xr2(rec), due: xr2(inv - rec), cert };
 };
+/* =================== PROJECTS: one page per site – Overview · Daily Reports · Letters · Money =================== */
+const xReps = code => (typeof reports !== 'undefined' ? reports : []).filter(r => normSite(r.site) === code).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+const xRepMen = r => (r.co || []).filter(x => x.v !== 2 || x.status !== 'Absent').reduce((n, x) => n + (x.v === 2 ? 1 : num(x.skilled) + num(x.unskilled)), 0) + (r.sub || []).reduce((n, x) => n + num(x.skilled) + num(x.unskilled), 0);
 function xSites(){
-  const list = X.d.sites.slice().sort((a, b) => (a.status === 'Completed') - (b.status === 'Completed') || a.code.localeCompare(b.code));
-  xMain().innerHTML = `<div class="x-tot"><span>${list.length} sites</span><span>Contract total AED ${aed(list.reduce((s, x) => s + (x.contract || 0), 0))}</span></div>
-    <div class="x-list">${list.map(s => { const m = xSiteMoney(s.code);
+  X.view = 'sites'; const all = xSeesAll(), q = (X.projQ || '').toLowerCase();
+  const list = X.d.sites.filter(s => !q || [s.code, s.client, s.project, s.plot, s.consultant].join(' ').toLowerCase().includes(q))
+    .sort((a, b) => (a.status === 'Completed') - (b.status === 'Completed') || a.code.localeCompare(b.code));
+  xMain().innerHTML = `<div class="x-tot"><span>${list.length} projects · ${list.filter(s => s.status !== 'Completed').length} active</span>${all ? `<span>Contracts AED ${aed(list.reduce((s, x) => s + (x.contract || 0), 0))}</span>` : ''}</div>
+    <input data-xprojq value="${esc(X.projQ || '')}" placeholder="Search project, client, plot…" aria-label="Search projects" style="margin-bottom:10px">
+    <div class="x-list">${list.map(s => { const m = all ? xSiteMoney(s.code) : null, r = xReps(s.code), today0 = r[0] && r[0].date === today();
+      const open = (X.d.letters || []).filter(l => l.site === s.code && /Draft|Sent/.test(l.status)).length;
       return `<button class="x-it" data-xsitep="${esc(s.code)}"><span class="ic ${s.status === 'Completed' ? 'in' : ''}">${esc(s.code.replace(/\D/g, '').slice(-2))}</span>
-        <span class="t"><b>${esc(s.code)}${s.client ? ' · ' + esc(s.client) : ''}</b><small>${esc([s.project, s.plot, s.consultant].filter(Boolean).join(' · ') || 'Details not filled yet')}</small>
-        <small>${s.contract ? 'Contract ' + aed(s.contract) : 'No contract value'}${m.inv ? ' · invoiced ' + aed(m.inv) : ''}${m.rec ? ' · received ' + aed(m.rec) : ''}</small></span>
-        <span class="a ${m.due > 0 ? 'out' : ''}">${m.due > 0 ? aed(m.due) + '<br><small style="font-weight:500;color:var(--muted)">due</small>' : esc(s.status || 'Active')}</span></button>`; }).join('')}</div>
-    <div class="x-save"><div><button class="btn sec" data-x="home">Back</button>${xIsAdmin() ? '<button class="btn" data-xsitef="">Add site</button>' : ''}</div></div>`;
+        <span class="t"><b>${esc(s.code)}${s.client ? ' · ' + esc(s.client) : ''}</b><small>${esc([s.project, s.plot ? 'Plot ' + s.plot : '', s.consultant].filter(Boolean).join(' · ') || 'Details not filled yet')}</small>
+        <small>${r.length ? (today0 ? '✓ Report today' : 'Last report ' + dmy(r[0].date)) : 'No reports yet'}${open ? ' · ' + open + ' open letter' + (open > 1 ? 's' : '') : ''}${m && m.due > 0 ? ' · due ' + aed(m.due) : ''}</small></span>
+        <span class="a">${esc(s.status || 'Active')}</span></button>`; }).join('') || '<div class="empty">No projects found.</div>'}</div>
+    <div class="x-save"><div><button class="btn sec" data-x="home">Back</button>${xIsAdmin() ? '<button class="btn" data-xsitef="">Add project</button>' : ''}</div></div>`;
+}
+/* open the Daily Site Report app on a project: today's report, or a saved one */
+async function xOpenDsr(site, id){
+  if (typeof dirty !== 'undefined' && dirty && !await ask('The Daily Site Report open on this phone has unsaved changes. Discard them?', 'Discard')) return;
+  if (id) { const r = reports.find(x => String(x.id) === String(id)); if (!r) return toast('Report not found'); cur = copy(r); dirty = false; render(); }
+  else startReport(site);
+  document.body.classList.remove('at-exp'); openApp('form'); window.scrollTo(0, 0);
 }
 function xSiteForm(code){
   const s = code ? Object.assign({}, xSite(code)) : { code: '', status: 'Active' }, ro = !xIsAdmin();
@@ -3508,7 +3525,68 @@ function xWhatHappens(f){
 }
 /* one page per site: everything linked */
 function xSitePage(code){
-  const s = xSite(code), d = X.d, m = xSiteMoney(code); X.view = 'site'; X.siteCode = code;
+  if (X.siteCode !== code) X.projTab = 'over';
+  X.view = 'site'; X.siteCode = code;
+  const s = xSite(code), all = xSeesAll(), tab = (X.projTab === 'money' && !all) ? 'over' : (X.projTab || 'over');
+  const reps = xReps(code), L = (X.d.letters || []).filter(l => l.site === code && l.status !== 'Cancelled');
+  const tabs = [['over', 'Overview'], ['dsr', 'Daily Reports' + (reps.length ? ' · ' + reps.length : '')], ['ltr', 'Letters' + (L.length ? ' · ' + L.length : '')]].concat(all ? [['money', 'Money']] : []);
+  const head = `<div class="x-sp-head"><small>PROJECT ${esc(code)}${s.status && s.status !== 'Active' ? ' · ' + esc(s.status).toUpperCase() : ''}</small><h2>${esc(s.project || s.client || 'Project ' + code)}</h2>
+      <div>${esc([s.client && s.project ? s.client : '', s.plot ? 'Plot ' + s.plot : '', s.location, s.consultant ? 'Consultant ' + s.consultant : ''].filter(Boolean).join(' · ') || (all ? 'Tap Details to fill the project details' : ''))}</div></div>
+    <div class="x-chips" style="margin:10px 0 12px;flex-wrap:nowrap;overflow-x:auto">${tabs.map(([k, t]) => `<button type="button" class="${tab === k ? 'on' : ''}" data-xptab="${k}" style="white-space:nowrap">${t}</button>`).join('')}</div>`;
+  const foot = `<div class="x-save"><div><button class="btn sec" data-x="sites">Back</button>${all ? `<button class="btn sec" data-xsitef="${esc(code)}">Details</button>` : ''}
+      <button class="btn" data-xdsr="${esc(code)}">Today's report</button></div></div>`;
+  let body = '';
+  if (tab === 'over') body = xProjOverview(code, reps, L);
+  else if (tab === 'dsr') body = xProjReports(code, reps);
+  else if (tab === 'ltr') body = `<div class="x-big"><button class="in" data-xltrsitenew="${esc(code)}">+ Letter / report<small>EOT, NCR, RFI, inspection, delay notice…</small></button></div>
+      <div class="x-list" style="margin-top:10px">${L.map(xLtrRow).join('') || '<div class="empty">No letters for this project yet.</div>'}</div>`;
+  else body = xProjMoney(code);
+  xMain().innerHTML = head + body + foot;
+  $('exp').scrollTop = 0;
+}
+/* Overview: the project at a glance */
+function xProjOverview(code, reps, L){
+  const s = xSite(code), all = xSeesAll(), r0 = reps[0], wk = reps.filter(r => xDaysBetween(r.date, today()) < 7);
+  const openL = L.filter(l => /Draft|Sent/.test(l.status)), dl = all ? xDeliveries(code, 60).filter(x => !x.bill) : [];
+  const photos = reps.flatMap(r => (r.photos || []).filter(p => p.id || p.src).map(p => ({ p, date: r.date }))).slice(0, 6);
+  const daysSince = r0 ? xDaysBetween(r0.date, today()) : null;
+  let money = '';
+  if (all) { const m = xSiteMoney(code), P = xPnlData('').S[code] || {}, pct = m.cert ? +m.cert.data.pct || 0 : 0, rev = (s.contract || 0) + (s.variations || 0);
+    money = `${rev ? `<div class="card" style="margin-bottom:10px"><div class="body"><div class="x-vrow"><span>Contract (with variations)</span><b>AED ${aed(rev)}</b></div>
+        <div class="x-vrow"><span>Work done (last certificate)</span><b>${pct}%</b></div>${xBar(pct, 100)}</div></div>` : ''}
+      <div class="x-stats"><div><b>${aed(m.inv)}</b><small>Invoiced</small></div><div><b>${aed(m.rec)}</b><small>Received</small></div><div><b class="${m.due > 0 ? 'neg' : ''}">${aed(m.due)}</b><small>Still due</small></div></div>
+      <div class="x-stats" style="margin-top:8px"><div><b>${aed(P.income || 0)}</b><small>Income (excl. VAT)</small></div><div><b>${aed(P.cost || 0)}</b><small>Costs</small></div>
+        <div><b class="${(P.profit || 0) < 0 ? 'neg' : ''}">${(P.profit || 0) < 0 ? '−' : ''}${aed(Math.abs(P.profit || 0))}</b><small>Profit</small></div></div>`; }
+  const alerts = [
+    daysSince == null ? 'No Daily Site Report yet for this project.' : daysSince > 1 ? `No Daily Site Report for ${daysSince} days (last ${dmy(r0.date)}).` : '',
+    openL.length ? `${openL.length} letter${openL.length > 1 ? 's' : ''} still open (${openL.slice(0, 3).map(l => l.no.split('/').slice(1).join('/')).join(', ')}).` : '',
+    dl.length ? `${dl.length} deliver${dl.length > 1 ? 'ies' : 'y'} in the Daily Reports with no bill entered.` : ''].filter(Boolean);
+  return `${alerts.map(a => `<div class="x-warn" style="margin-bottom:8px">${esc(a)}</div>`).join('')}
+    <div class="x-big"><button class="in" data-xdsr="${esc(code)}">${r0 && r0.date === today() ? "Open today's report" : "Today's Daily Report"}<small>${r0 && r0.date === today() ? '✓ started' : 'Not done yet'}</small></button>
+      <button class="out" data-xltrsitenew="${esc(code)}">+ Letter / report<small>EOT, NCR, RFI…</small></button></div>
+    ${money}
+    <div class="x-stats" style="margin-top:8px"><div><b>${reps.length}</b><small>Daily reports</small></div><div><b>${wk.reduce((n, r) => n + xRepMen(r), 0)}</b><small>Man-days, last 7 days</small></div>
+      <div><b>${r0 ? xRepMen(r0) : 0}</b><small>Men on ${r0 ? dmy(r0.date) : '–'}</small></div></div>
+    ${r0 ? `<div class="x-sec">Latest work done · ${dmy(r0.date)}</div><div class="card"><div class="body">${(r0.work || []).filter(w => w.text).map(w => `<div class="x-vrow" style="display:block">• ${esc(w.text)}</div>`).join('') || '<p class="hint">No work summary written.</p>'}</div></div>` : ''}
+    ${photos.length ? `<div class="x-sec">Latest site photos</div><div class="x-rc">${photos.map(x => `<a class="ph" href="${esc(viewUrl(x.p))}" target="_blank" rel="noopener"><img src="${esc(x.p.src || thumb(x.p, 300))}" alt="Photo ${dmy(x.date)}"></a>`).join('')}</div>` : ''}`;
+}
+/* Daily Reports: every report of this project, open / add */
+function xProjReports(code, reps){
+  const m = today().slice(0, 7), mon = reps.filter(r => String(r.date).slice(0, 7) === m);
+  const dl = xDeliveries(code, 60), all = xSeesAll();
+  return `<div class="x-big"><button class="in" data-xdsr="${esc(code)}">${reps[0] && reps[0].date === today() ? "Open today's report" : "+ Today's report"}<small>Labour, materials, stock, work, photos</small></button></div>
+    <div class="x-stats" style="margin-top:10px"><div><b>${reps.length}</b><small>Reports</small></div><div><b>${mon.length}</b><small>This month</small></div><div><b>${mon.reduce((n, r) => n + xRepMen(r), 0)}</b><small>Man-days this month</small></div></div>
+    <div class="x-list" style="margin-top:10px">${reps.slice(0, 60).map(r => { const w = (r.work || []).map(x => x.text).filter(Boolean), ph = (r.photos || []).filter(p => p.id || p.src).length;
+      return `<button class="x-it" data-xdsropen="${esc(r.id)}"><span class="ic in">${esc(String(r.date).slice(8, 10))}</span>
+        <span class="t"><b>${dmy(r.date)} · ${xRepMen(r)} men${ph ? ' · ' + ph + ' photo' + (ph > 1 ? 's' : '') : ''}</b><small>${esc((w[0] || 'No work summary').slice(0, 90))}${w.length > 1 ? ' (+' + (w.length - 1) + ')' : ''}</small><small>${esc(r.eng || '')}</small></span></button>`; }).join('')
+      || '<div class="empty">No Daily Site Reports for this project yet.</div>'}</div>
+    ${reps.length > 60 ? '<p class="hint">Showing the latest 60. Older ones are in Daily Site Report → Past reports.</p>' : ''}
+    ${dl.length ? `<details class="x-fold"><summary>Materials delivered (60 days)<span>${dl.length} lines</span></summary><div>${dl.slice(0, 30).map(x => `<div class="x-vrow"><span>${dmy(x.date)} · ${esc(x.qty)} ${esc(x.desc)}<br><small class="hint">${esc(x.party || 'supplier not written')}</small></span>
+      ${all ? `<b style="color:${x.bill ? 'var(--ok)' : 'var(--danger)'};white-space:normal;text-align:right">${x.bill ? 'Billed ' + esc(x.bill.voucher) : 'No bill yet'}</b>` : ''}</div>`).join('')}</div></details>` : ''}`;
+}
+/* Money: client documents, payments, costs, expenses (admin / MD) */
+function xProjMoney(code){
+  const s = xSite(code), d = X.d, m = xSiteMoney(code);
   const costs = xCosts('')[code] || { total: 0, cats: {} }, lab = xLabour(code, ''), bud = xSiteBudget(code), cost = xr2(costs.total + (lab.cost || 0));
   const reps = (typeof reports !== 'undefined' ? reports : []).filter(r => normSite(r.site) === code).sort((a, b) => b.date.localeCompare(a.date));
   const docs = (d.docs || []).filter(x => x.site === code), recs = d.txns.filter(t => t.type === 'CLIENT RECEIPT' && xLiveTx(t) && t.alloc === code);
@@ -3519,11 +3597,10 @@ function xSitePage(code){
   const fold = (title, sum, body, open) => `<details class="x-fold"${open ? ' open' : ''}><summary>${title}<span>${sum}</span></summary><div>${body}</div></details>`;
   const cats = Object.entries(costs.cats).sort((a, b) => b[1] - a[1]).slice(0, 5);
   const man = r => (r.co || []).reduce((n, x) => n + num(x.skilled) + num(x.unskilled), 0) + (r.sub || []).reduce((n, x) => n + num(x.skilled) + num(x.unskilled), 0);
-  xMain().innerHTML = `<div class="x-sp-head"><small>SITE ${esc(code)}${s.status && s.status !== 'Active' ? ' · ' + esc(s.status).toUpperCase() : ''}</small><h2>${esc(s.client || 'Client not filled in')}</h2>
-      <div>${esc([s.project, s.plot ? 'Plot ' + s.plot : '', s.location, s.consultant ? 'Consultant ' + s.consultant : ''].filter(Boolean).join(' · ') || 'Tap Details to fill the site details')}</div>
-      ${rev ? `<div style="margin-top:8px">Contract AED ${aed(rev)} · work done ${pct}%</div>${xBar(pct, 100).replace('x-pbar', 'x-pbar')}` : ''}</div>
-    <div class="x-stats"><div><b>${aed(m.inv)}</b><small>Invoiced</small></div><div><b>${aed(m.rec)}</b><small>Received</small></div><div><b class="${m.due > 0 ? 'neg' : ''}">${aed(m.due)}</b><small>Still due</small></div></div>
-    ${noBill.length ? `<div class="x-warn" style="margin-top:10px">${noBill.length} deliver${noBill.length > 1 ? 'ies' : 'y'} in the Daily Site Reports with no bill entered yet – see Materials below.</div>` : ''}
+  return `<div class="x-stats"><div><b>${aed(m.inv)}</b><small>Invoiced</small></div><div><b>${aed(m.rec)}</b><small>Received</small></div><div><b class="${m.due > 0 ? 'neg' : ''}">${aed(m.due)}</b><small>Still due</small></div></div>
+    ${rev ? `<p class="hint" style="margin:8px 0 0">Contract AED ${aed(rev)} · work done ${pct}% (last certificate)</p>` : ''}
+    <div class="x-big" style="margin-top:10px">${xIsAdmin() ? `<button class="in" data-xnewsite="CLIENT RECEIPT">Client paid<small>Receipt voucher</small></button>` : ''}
+      ${xCanAdd() || xCanBill() ? `<button class="out" data-xnewsite="EXPENSE">+ Expense<small>For this project</small></button>` : ''}</div>
     ${fold('Money from the client', docs.length + ' documents · ' + recs.length + ' payments', `
       <div class="x-list">${docs.map(x => { const st = xDocState(x); return `<button class="x-it${x.status === 'Cancelled' ? ' cx' : ''}" data-xdoc="${esc(x.id)}"><span class="ic ${x.kind === 'CERT' ? 'tr' : st === 'Paid' ? 'in' : ''}">${x.kind === 'CERT' ? 'IPC' : 'INV'}</span>
         <span class="t"><b>${esc(x.no)}</b><small>${dmy(x.date)} · ${st}${x.kind === 'INV' && /Part|Unpaid/.test(st) ? ' · due ' + aed(x.total - xDocPaid(x)) : ''}</small></span><span class="a">${aed(x.total)}</span></button>`; }).join('') || '<div class="empty" style="padding:10px">No certificates or invoices yet.</div>'}</div>
@@ -3533,17 +3610,8 @@ function xSitePage(code){
       ${bud.total ? xBar(cost, bud.total) + `<p class="hint">${xPct(cost, bud.total)}% of the budget used.</p>` : '<p class="hint">No budget set.</p>'}
       ${cats.map(([c, v]) => `<div class="x-vrow"><span>${esc(c)}</span><b>${aed(v)}</b></div>`).join('')}
       ${lab.cost ? `<div class="x-vrow"><span>Company labour (${lab.sk + lab.us} man-days)</span><b>${aed(lab.cost)}</b></div>` : ''}
-      <button class="btn sec" data-xsite="${esc(code)}" style="margin-top:10px">Full cost sheet</button>`)}
-    ${fold('Daily Site Reports', reps.length + ' reports' + (reps[0] ? ' · last ' + dmy(reps[0].date) : ''), reps.slice(0, 7).map(r => `<div class="x-vrow" style="display:block"><b style="display:block">${dmy(r.date)} · ${man(r)} men</b><small class="hint">${esc(((r.work || []).map(w => w.text).filter(Boolean)[0] || '').slice(0, 110))}</small></div>`).join('') || '<p class="hint">No reports for this site.</p>')}
-    ${fold('Materials delivered (60 days)', dl.length + ' lines' + (noBill.length ? ' · ' + noBill.length + ' no bill' : ''), dl.slice(0, 25).map(x => `<div class="x-vrow"><span>${dmy(x.date)} · ${esc(x.qty)} ${esc(x.desc)}<br><small class="hint">${esc(x.party || 'supplier not written')}</small></span>
-      <b style="color:${x.bill ? 'var(--ok)' : 'var(--danger)'};white-space:normal;text-align:right">${x.bill ? 'Billed ' + esc(x.bill.voucher) : 'No bill yet'}</b></div>`).join('') || '<p class="hint">No materials received in the Daily Site Reports.</p>')}
-    ${(() => { const L = (d.letters || []).filter(l => l.site === code && l.status !== 'Cancelled');
-      return fold('Letters & reports', L.length + ' · EOT, NCR, RFI…', `<div class="x-list">${L.slice(0, 8).map(xLtrRow).join('') || '<div class="empty">None yet.</div>'}</div>
-        <div style="display:flex;gap:8px;margin-top:8px"><button class="btn sec" data-xltrsitenew="${esc(code)}">+ Letter / report</button>${L.length > 8 ? `<button class="btn sec" data-xltrsite="${esc(code)}">See all</button>` : ''}</div>`); })()}
-    ${fold('Latest expenses', exps.length + ' entries', `<div class="x-list">${exps.slice(0, 8).map(xRow).join('') || '<div class="empty">None yet.</div>'}</div>`)}
-    <div class="x-save"><div><button class="btn sec" data-x="sites">Back</button><button class="btn sec" data-xsitef="${esc(code)}">Details</button>
-      ${xCanAdd() ? `<button class="btn sec" data-xnewsite="EXPENSE">+ Expense</button>` : ''}${xIsAdmin() ? `<button class="btn" data-xnewsite="CLIENT RECEIPT">Client paid</button>` : ''}</div></div>`;
-  $('exp').scrollTop = 0;
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn sec" data-xsite="${esc(code)}">Full cost sheet</button><button class="btn sec" data-xpnl="${esc(code)}">Profit & loss</button></div>`)}
+    ${fold('Latest expenses', exps.length + ' entries', `<div class="x-list">${exps.slice(0, 8).map(xRow).join('') || '<div class="empty">None yet.</div>'}</div>`)}`;
 }
 
 /* =================== statements: bank (Excel/CSV read on the phone) · supplier (photo/PDF via Gemini, or Excel/CSV) =================== */
@@ -4211,6 +4279,10 @@ $('exp').addEventListener('click', async e => {
       item: 'Payment on account', method: 'Bank transfer' };
     return xNew('EXPENSE'); }
   if (D.xstmtprint) return xStmtPrint(D.xstmtprint);
+  /* projects */
+  if (D.xptab) { X.projTab = D.xptab; return xSitePage(X.siteCode); }
+  if (D.xdsr) return xOpenDsr(D.xdsr);
+  if (D.xdsropen) return xOpenDsr(X.siteCode, D.xdsropen);
   /* letters & reports */
   if ('xltrnew' in D) return xLtrMenu();
   if (D.xltrsitenew) { X.ltrSite = D.xltrsitenew; return xLtrMenu(); }
@@ -4445,6 +4517,7 @@ $('exp').addEventListener('input', e => {
     if (X.df.kind === 'INV' && (k === 'qty' || k === 'rate') && xr2(l.qty) && xr2(l.rate)) { l.amount = xr2(xr2(l.qty) * xr2(l.rate)).toFixed(2); const a = document.querySelector(`[data-xdl="${i}|amount"]`); if (a) a.value = l.amount; }
     xDocCalc(); return; }
   if (t.dataset.xp && X.pf) { X.pf[t.dataset.xp] = t.value; return; }
+  if ('xprojq' in t.dataset) { X.projQ = t.value; clearTimeout(X._pq); X._pq = setTimeout(() => { xSites(); const q = document.querySelector('[data-xprojq]'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 300); return; }
   if (t.dataset.xltrf) { X[t.dataset.xltrf === 'site' ? 'ltrSite' : 'ltrKind'] = t.value; xLetters(); return; }
   if (t.dataset.xlt && X.lf) { const f = X.lf, k = t.dataset.xlt; f[k] = t.value;
     if (k === 'site') { f.to = xLtrRecip(f.kind, f.site) || f.to; f.subject = xLtrSubject(f); if (!f.id) f.data.body = xLtrText(f); xLtrForm(); }
