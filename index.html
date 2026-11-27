@@ -3658,10 +3658,16 @@ function xLedger(name){
   Object.keys(age).forEach(x => { age[x] = xr2(age[x]); });
   return { name: p.name || name, p, opening, rows, billed, paid, bal, age, last: rows.length ? rows[rows.length - 1].date : '' };
 }
+/* staff (salary, advances) are company labour, not suppliers */
+const xStaffCat = c => /salary|advance|staff/i.test(String(c || ''));
 function xSuppliers(){
-  const m = {};
+  const m = {}, staff = new Set((X.d.staff || []).map(xKey));
   (X.d.parties || []).forEach(p => { m[xKey(p.name)] = p.name; });
   X.d.txns.forEach(t => { if ((t.type === 'EXPENSE' || t.type === 'BILL') && xLiveTx(t) && String(t.party || '').trim() && !m[xKey(t.party)]) m[xKey(t.party)] = t.party.trim(); });
+  // leave out staff: names in the Staff list, or people only ever paid salary / advances (and no bills or opening balance)
+  Object.keys(m).forEach(k => { const es = X.d.txns.filter(t => xKey(t.party) === k && xLiveTx(t) && (t.type === 'EXPENSE' || t.type === 'BILL'));
+    const p = (X.d.parties || []).find(x => xKey(x.name) === k) || {};
+    if (staff.has(k) || (es.length && es.every(t => t.type === 'EXPENSE' && xStaffCat(t.cat)) && !xr2(p.opening))) delete m[k]; });
   return Object.values(m).map(n => { const L = xLedger(n); return { name: L.name, type: L.p.type || '', trn: L.p.trn || '', trade: L.p.trade || '', n: L.rows.length,
     total: L.billed, billed: L.billed, paid: L.paid, bal: L.bal, last: L.last, age: L.age }; });
 }
@@ -3698,6 +3704,8 @@ function xPartyForm(name){
         <div><label for="xp-od">As on date</label><input type="date" id="xp-od" data-xp="odate" value="${esc(f.odate || today())}"></div></div>
       <p class="hint">Opening balance = what we already owed them before using the app (leave empty if nothing). Use a minus amount if they owe us / we paid in advance.</p>
     </div></div><p class="x-ferr" id="xp-err"></p></div>
+    ${f.orig ? `<div class="x-form"><button class="btn sec" data-xpartydel="${esc(f.orig)}" style="color:var(--danger);width:100%">Remove ${esc(f.orig)} from the list</button>
+      <p class="hint">Entries already made stay as they are. Not possible while there are bills or payments on account for them.</p></div>` : ''}
     <div class="x-save"><div><button class="btn sec" data-x="${f.orig ? 'suppd' : 'supp'}">Cancel</button><button class="btn ok" id="xp-save">Save</button></div></div>`;
   $('exp').scrollTop = 0;
 }
@@ -3949,6 +3957,10 @@ $('exp').addEventListener('click', async e => {
   if (D.xsuppd) return xSuppDetail(D.xsuppd);
   if ('xparty' in D) return xPartyForm(D.xparty);
   if (b.id === 'xp-save') return xPartySave();
+  if (D.xpartydel) { const n = D.xpartydel;
+    if (!await ask(`Remove ${n} from the supplier / subcontractor list?\n\nEntries already made are not changed.`, 'Remove')) return;
+    try { X.d = await server('expDeleteParty', n, X.pin); keep('exp.cache', X.d); X.pf = null; toast(n + ' removed'); xGo('supp'); } catch (er) { toast(errText(er)); }
+    return; }
   if (D.xsuppf) { X.suppF = D.xsuppf; return xSupp(); }
   if (b.closest && b.closest('[data-xpchip]') && X.pf) { const k = b.closest('[data-xpchip]').dataset.xpchip; X.pf[k] = D.v;
     b.parentElement.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); return; }
